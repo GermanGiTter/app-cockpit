@@ -1,0 +1,7 @@
+.venv/
+.venv-build/
+dist/
+build/pyi-work/
+__pycache__/
+*.pyc
+.streamlit/secrets.toml

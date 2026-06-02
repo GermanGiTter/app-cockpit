@@ -1,0 +1,366 @@
+# App-Cockpit — zentrales Register (eine Quelle für Playbook + UI)
+# status: active = geprüft | draft = Platzhalter, bitte ergänzen
+
+version: 1
+
+apps:
+  - id: chrona
+    name: Chrona
+    status: active
+    description: Flutter-App mit TTS und Web-Radio.
+    stack: [flutter, dart]
+    tags: [mobile, desktop]
+    github: https://github.com/GermanGiTter/chrona
+    local_path: C:\Users\rare\.gemini\antigravity\playground\chrona
+    targets: [windows, android, ios, macos]
+    workflow:
+      dev_on: windows
+      release_on: mac_ios
+      summary: "Windows = entwickeln. Mac = iPhone/iPad bauen und starten. Nicht auf Vercel."
+      steps:
+        - title: Am Windows-PC entwickeln
+          detail: Im Ordner chrona arbeiten. Test mit Schnellstart dev (flutter run). Änderungen committen und zu GitHub pushen.
+        - title: Auf den Mac holen (kein USB-Kopieren nötig)
+          detail: Auf dem Mac dasselbe Repo klonen oder git pull — gleicher Stand wie auf dem PC.
+        - title: Auf dem Mac vorbereiten
+          detail: flutter pub get. Einmalig oder nach ios-Änderungen cd ios, pod install, cd ...
+        - title: Auf iPhone/iPad starten
+          detail: iPhone/iPad per USB, flutter devices, dann flutter run oder flutter run --release. Debug oft nur so, nicht über das Home-Icon.
+        - title: Was du nicht brauchst
+          detail: Kein Vercel. Kein manuelles Kopieren des ganzen Ordners, wenn Git auf Mac und PC eingerichtet ist.
+    prerequisites:
+      - "Flutter SDK (flutter doctor ohne kritische Fehler)"
+      - Android SDK für Android; Xcode + CocoaPods für iOS/macOS
+    commands:
+      install: |
+        git clone https://github.com/GermanGiTter/chrona
+        cd chrona
+        flutter pub get
+      update: |
+        cd chrona
+        git pull
+        flutter pub get
+      dev: |
+        cd chrona
+        flutter devices
+        flutter run
+      release: |
+        cd chrona
+        flutter run --release
+      test: |
+        cd chrona
+        flutter test
+      ios_setup: |
+        cd chrona/ios
+        pod install
+        cd ..
+        # optional: open ios/Runner.xcworkspace
+    notes:
+      - README im Repo ist noch Flutter-Standard — Details hier im Cockpit.
+      - iOS-Debug oft nur per flutter run, nicht über Home-Icon.
+
+  - id: chordquest
+    name: ChordQuest
+    status: active
+    description: Akkord-/Musik-App (React, Vite, Capacitor für iPad/iOS).
+    stack: [node, react, vite, capacitor]
+    tags: [web, mobile]
+    local_path: C:\Users\rare\.gemini\antigravity\playground\chordquest
+    targets: [web, ios]
+    workflow:
+      dev_on: windows
+      release_on: mac_ios
+      summary: "Windows = Web-Entwicklung. Mac = iPad/iPhone-Build über Capacitor und Xcode."
+      steps:
+        - title: Am Windows-PC entwickeln
+          detail: npm run dev im Browser testen. Optional npm run dev:ipad für iPad im WLAN. Committen und pushen.
+        - title: Auf den Mac holen
+          detail: git pull im Ordner chordquest, dann npm install.
+        - title: Web-Build und Capacitor
+          detail: npm run build, dann npx cap sync (oder npm run cap:sync).
+        - title: In Xcode aufs Gerät
+          detail: npm run cap:ios öffnet Xcode. Dort Zielgerät wählen und Run — App landet auf iPhone/iPad.
+        - title: Was du nicht brauchst
+          detail: Kein Vercel für die native App. Vercel nur falls du separat eine Web-Version hostest.
+    prerequisites:
+      - Node.js (LTS)
+      - npm
+      - Mac mit Xcode für Geräte-Builds
+    commands:
+      install: |
+        cd chordquest
+        npm install
+      update: |
+        cd chordquest
+        git pull
+        npm install
+      dev: |
+        cd chordquest
+        npm run dev
+      dev_ipad: |
+        cd chordquest
+        npm run dev:ipad
+      build: |
+        cd chordquest
+        npm run build
+      test: |
+        cd chordquest
+        npm test
+      ios: |
+        cd chordquest
+        npm run cap:ios
+    notes:
+      - "dev:ipad zeigt Netzwerk-URL für Gerät im WLAN."
+
+  - id: cellora
+    name: Cellora
+    status: active
+    description: Noten-/Cell-App mit Expo (offline-fähige Assets).
+    stack: [expo, react-native, typescript]
+    tags: [mobile]
+    local_path: C:\Users\rare\.gemini\antigravity\playground\Cello
+    targets: [android, ios, web]
+    workflow:
+      dev_on: windows
+      release_on: mac_ios
+      summary: "Windows = Expo-Entwicklung. Mac = iOS-Build aufs Gerät (Ordner Cello)."
+      steps:
+        - title: Am Windows-PC entwickeln
+          detail: npm start (Expo). Am PC oft mit Expo Go oder Emulator/Android. Committen und pushen.
+        - title: Auf den Mac holen
+          detail: git pull im Ordner Cello, npm install (postinstall baut Assets).
+        - title: iOS auf dem Mac
+          detail: npm run ios bzw. npx expo run:ios — Xcode und Apple-Entwicklerkonto nötig. Gerät per USB verbinden.
+        - title: Ordnerhinweis
+          detail: App heißt Cellora, Projektordner heißt Cello — auf dem Mac denselben Repo-Pfad verwenden.
+    prerequisites:
+      - Node.js (LTS), npm
+      - Expo Go oder Dev-Build je nach Ziel
+      - Mac mit Xcode für iOS auf Gerät
+    commands:
+      install: |
+        cd Cello
+        npm install
+      update: |
+        cd Cello
+        git pull
+        npm install
+      dev: |
+        cd Cello
+        npm start
+      android: |
+        cd Cello
+        npm run android
+      ios: |
+        cd Cello
+        npm run ios
+      web: |
+        cd Cello
+        npm run web
+      test: |
+        cd Cello
+        npm test
+    notes:
+      - Paketname in package.json ist cellora; Ordner heißt Cello.
+
+  - id: td9
+    name: TD-9 Studio Manager
+    status: active
+    description: Desktop-Tool für Roland TD-9 Backups (Rust/Tauri, GUI auf Deutsch).
+    stack: [rust, tauri, node]
+    tags: [desktop]
+    local_path: C:\Users\rare\.gemini\antigravity\playground\TD-9
+    targets: [windows]
+    workflow:
+      dev_on: windows
+      release_on: windows
+      summary: "Alles nur auf Windows — Doppelklick-Start, kein Handy, kein Vercel."
+      steps:
+        - title: Entwickeln und starten
+          detail: Am PC im Ordner TD-9 den Befehl dev_gui nutzen (siehe Schnellstart). Kein zweiter Rechner nötig.
+        - title: Build/Release
+          detail: Kein App Store. Für eine installierbare EXE später Tauri-Build im Projekt — aktuell Dev-Modus über das Skript.
+    prerequisites:
+      - Rust toolchain
+      - Node.js für GUI-Crate
+    commands:
+      dev_gui: |
+        cd TD-9
+        powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-td9-gui.ps1
+      dev_gui_manual: |
+        cd TD-9\crates\td9-gui
+        npm install
+        npm run tauri dev
+    notes:
+      - Nur-Lese-Inspector MVP; Originale werden nicht überschrieben.
+      - Details in TD-9/README.md und docs/.
+
+  - id: kurs-import
+    name: Kurs-Import
+    status: active
+    description: Streamlit-Weboberfläche — Wertpapier-CSV, EOD-Kurse, Export für Lexware FinanzManager.
+    stack: [python, streamlit]
+    tags: [web, tooling]
+    local_path: C:\Users\rare\.gemini\antigravity\playground\kurs-import
+    targets: [browser]
+    workflow:
+      dev_on: windows
+      release_on: local
+      summary: "Läuft nur in deinem Browser auf dem PC — nichts deployen, kein Handy."
+      steps:
+        - title: Einmal einrichten
+          detail: Python-venv und pip install (Befehl install).
+        - title: Starten
+          detail: Befehl dev — Browser öffnet Streamlit lokal. Kein git push, kein Vercel.
+        - title: Nutzung
+          detail: CSV hochladen, Kurse laden, Export-CSV — alles nur auf diesem Rechner.
+    prerequisites:
+      - Python 3.10+ (64-bit auf Windows — kein 32-bit)
+      - Internet für Marktdaten-APIs
+    commands:
+      install: |
+        cd kurs-import
+        py -3 -m venv .venv
+        .\.venv\Scripts\Activate.ps1
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+      dev: |
+        cd kurs-import
+        .\.venv\Scripts\Activate.ps1
+        streamlit run app.py
+      dev_alt_port: |
+        cd kurs-import
+        .\.venv\Scripts\Activate.ps1
+        streamlit run app.py --server.port 8502
+    notes:
+      - Optional BAVEST_API_KEY, OPENFIGI_API_KEY als Umgebungsvariablen.
+      - Ausführliche Doku im Projekt-README.
+
+  - id: app-cockpit
+    name: App-Cockpit
+    status: active
+    description: Nachschlagebuch und Starter für alle deine Apps (apps.yaml + Streamlit / Windows-EXE).
+    stack: [python, streamlit]
+    tags: [tooling, desktop]
+    github: https://github.com/GermanGiTter/app-cockpit
+    local_path: C:\Users\rare\.gemini\antigravity\playground\app-cockpit
+    targets: [windows, browser]
+    workflow:
+      dev_on: windows
+      release_on: local
+      summary: "Meta-App auf dem PC — Register pflegen, Cockpit starten oder EXE bauen."
+      steps:
+        - title: Cockpit starten
+          detail: Doppelklick auf dist\App-Cockpit\App-Cockpit.exe oder tools\run-cockpit.ps1 im Projektordner.
+        - title: EXE neu bauen
+          detail: Nach Code-Änderungen build\build-exe.ps1 (Cockpit vorher schließen).
+        - title: Apps pflegen
+          detail: apps.yaml bearbeiten — gleiche Datei neben der EXE in dist\App-Cockpit\.
+    prerequisites:
+      - Python 3.10+ (64-bit) nur zum Bauen der EXE
+    commands:
+      install: |
+        git clone https://github.com/GermanGiTter/app-cockpit
+        cd app-cockpit
+        py -3 -m venv .venv
+        .\.venv\Scripts\Activate.ps1
+        pip install -r cockpit\requirements.txt
+      dev: |
+        cd app-cockpit
+        .\tools\run-cockpit.ps1
+      build_exe: |
+        cd app-cockpit
+        .\build\build-exe.ps1
+    notes:
+      - Listet sich selbst mit — 8 Apps im Register.
+
+  - id: alles-zu
+    name: Alles Zu (Launcher „Alles schließen“)
+    status: active
+    description: Android-Hilfs-App — TTS-Hinweis, dann Home und Hintergrund-Apps beenden.
+    stack: [android, kotlin]
+    tags: [mobile, android-only]
+    github: https://github.com/GermanGiTter/alles-zu
+    local_path: C:\Users\rare\.gemini\antigravity\playground\ALLES-ZU
+    targets: [android]
+    workflow:
+      dev_on: windows
+      release_on: android_usb
+      summary: "Nur Android — am PC in Android Studio bauen und per USB installieren."
+      steps:
+        - title: Projekt öffnen
+          detail: Android Studio, Ordner ALLES-ZU öffnen, Gradle Sync abwarten.
+        - title: Aufs Handy
+          detail: USB-Debugging an, Run in Android Studio — oder APK bauen und installieren (siehe INSTALLATION.md im Projekt).
+        - title: Kein Mac, kein Vercel
+          detail: Rein lokale Android-App.
+    prerequisites:
+      - Android Studio
+      - USB-Debugging am Gerät
+    commands:
+      install: |
+        git clone https://github.com/GermanGiTter/alles-zu
+        cd alles-zu
+      update: |
+        cd ALLES-ZU
+        git pull
+      dev: |
+        # In Android Studio: File → Open → ALLES-ZU-Ordner, Gradle Sync, Run (▶)
+      apk: |
+        # Android Studio: Build → Build APK(s)
+    notes:
+      - Schritt-für-Schritt in ALLES-ZU/INSTALLATION.md.
+      - GitHub-Repo heißt alles-zu, lokaler Ordner ALLES-ZU.
+
+  - id: einkaufsliste
+    name: Einkaufsliste
+    status: active
+    description: Gemeinsame Einkaufsliste (Next.js). Repo-Ordner heißt retrograde-filament.
+    stack: [node, next, react, typescript]
+    tags: [web]
+    local_path: C:\Users\rare\.gemini\antigravity\playground\retrograde-filament
+    repo_folder: retrograde-filament
+    targets: [web]
+    workflow:
+      dev_on: windows
+      release_on: vercel
+      summary: "Windows = lokal testen. Internet-Release = nur Vercel (git push). Kein Mac, kein App Store."
+      steps:
+        - title: Am Windows-PC testen
+          detail: npm run dev — im Browser prüfen. Ordner retrograde-filament.
+        - title: Live stellen (Vercel)
+          detail: Änderungen committen, git push. Vercel baut automatisch. Env-Variablen nur im Vercel-Dashboard, nicht nur lokal.
+        - title: Nach dem Deploy
+          detail: PUSH-CHECKLISTE.md im Repo durchgehen (DB, VAPID, Tenant, …).
+        - title: Auf dem Handy nutzen
+          detail: Vercel-URL im Browser öffnen (PWA). Kein Kopieren auf den Mac, kein Xcode.
+    prerequisites:
+      - Node.js (LTS), npm
+      - Vercel-Projekt verbunden (Git)
+      - Env-Vars in Vercel (siehe PUSH-CHECKLISTE.md im Repo)
+    commands:
+      install: |
+        cd retrograde-filament
+        npm install
+      update: |
+        cd retrograde-filament
+        git pull
+        npm install
+      dev: |
+        cd retrograde-filament
+        npm run dev
+      build: |
+        cd retrograde-filament
+        npm run build
+      test: |
+        cd retrograde-filament
+        npm test
+      deploy: |
+        cd retrograde-filament
+        git add -A
+        git commit -m "deine Nachricht"
+        git push
+        # Vercel baut Production; danach PUSH-CHECKLISTE.md im Repo prüfen
+    notes:
+      - App-Name in der UI „Einkaufsliste“; Projektordner retrograde-filament.
+      - Kein iPhone-Transfer — Nutzung im Browser (PWA), Hosting nur Vercel.
