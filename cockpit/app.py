@@ -1,7 +1,8 @@
-"""App-Cockpit — Übersicht, Git-Status, Befehle kopieren / in PowerShell starten."""
+"""App-Cockpit — Übersicht, Wegweiser, Git-Status, Befehle."""
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,16 +16,22 @@ if str(bundle_root()) not in sys.path:
     sys.path.insert(0, str(bundle_root()))
 
 from cockpit.lib.manifest import MANIFEST, filter_apps, load_manifest, playbook_markdown
-
-
-def sort_apps_by_name(apps: list[dict]) -> list[dict]:
-    return sorted(apps, key=lambda a: (a.get("name") or a.get("id") or "").casefold())
 from cockpit.lib.status import (
     git_status,
     path_exists,
     pick_primary_command,
     script_for_powershell,
 )
+from cockpit.lib.workflow_guide import (
+    CATEGORIES,
+    apps_in_category,
+    category_for_app,
+    route_lines,
+)
+
+
+def sort_apps_by_name(apps: list[dict]) -> list[dict]:
+    return sorted(apps, key=lambda a: (a.get("name") or a.get("id") or "").casefold())
 
 
 @st.cache_data(ttl=30)
@@ -41,22 +48,12 @@ def cached_git(path: str) -> dict:
 
 
 RELEASE_LABELS = {
-    "vercel": "Release → Vercel",
-    "mac_ios": "Release → Mac (iPhone/iPad)",
+    "vercel": "Internet (Vercel)",
+    "mac_ios": "Mac → iPhone/iPad",
     "windows": "Nur Windows",
     "local": "Nur lokal",
-    "android_usb": "Android (USB/APK)",
+    "android_usb": "Android-Handy",
 }
-
-
-def workflow_badge(app: dict) -> str:
-    wf = app.get("workflow") or {}
-    release = wf.get("release_on", "")
-    label = RELEASE_LABELS.get(release, release or "—")
-    dev = wf.get("dev_on", "")
-    if dev:
-        return f"Dev: {dev} · {label}"
-    return label
 
 
 def git_label(data: dict) -> str:
@@ -92,21 +89,100 @@ def open_in_powershell(script: str) -> None:
     )
 
 
+def open_folder(path: str) -> None:
+    if sys.platform == "win32":
+        os.startfile(path)  # noqa: S606
+    else:
+        subprocess.Popen(["xdg-open", path])
+
+
+def render_guide_page(apps: list[dict]) -> None:
+    st.header("Wegweiser: Wohin mit welcher App?")
+    st.markdown(
+        """
+**Die wichtigste Regel:** Es gibt nur wenige Muster — nicht jede App funktioniert gleich.
+
+| Frage | Antwort für die meisten Fälle |
+|-------|--------------------------------|
+| Wo programmiere ich? | Fast immer auf deinem **Windows-PC** (Playground-Ordner) |
+| Muss ich Ordner auf USB kopieren? | **Nein** — bei iPhone-Apps und Einkaufsliste: **Git** (push/pull) |
+| Wo landet die App fürs Handy? | **iPhone/iPad** → Mac · **Einkaufsliste** → Vercel-URL · **Alles Zu** → USB/Android Studio |
+"""
+    )
+
+    for cat in CATEGORIES:
+        group = sort_apps_by_name(apps_in_category(apps, cat["release_on"]))
+        if not group:
+            continue
+        with st.expander(
+            f"{cat['icon']} {cat['title']} — {', '.join(a.get('name', '?') for a in group)}",
+            expanded=cat["release_on"] == "mac_ios",
+        ):
+            st.markdown(f"**Kurz:** {cat['short']}")
+            t1, t2, t3 = st.columns(3)
+            with t1:
+                st.markdown("**Entwickeln**")
+                st.write(cat["where_dev"])
+            with t2:
+                st.markdown("**Übertragen**")
+                st.write(cat["how_transfer"])
+            with t3:
+                st.markdown("**Starten / Nutzen**")
+                st.write(cat["where_run"])
+            st.caption(f"Nicht: {cat['never']}")
+            for app in group:
+                st.markdown(f"- **{app.get('name')}** → Sidebar anklicken für Befehle")
+
+    st.divider()
+    st.markdown("### Merkhilfe")
+    st.code(
+        "iPhone/iPad-Apps  =  PC + Git  +  Mac\n"
+        "Einkaufsliste      =  PC + git push  +  Vercel-URL im Browser\n"
+        "Alles Zu           =  PC + Android Studio + USB\n"
+        "TD-9, Kurs-Import  =  nur PC\n"
+        "App-Cockpit        =  nur PC (dieses Tool)",
+        language=None,
+    )
+
+
+def render_app_card(app: dict, *, compact: bool = False) -> None:
+    name = app.get("name", "?")
+    local = app.get("local_path") or ""
+    exists = path_exists(local)
+    cat = category_for_app(app)
+    icon = cat["icon"] if cat else "📦"
+
+    st.markdown(f"{icon} **{name}**")
+    if cat:
+        st.caption(cat["short"])
+    if exists:
+        st.caption(f"Git: {git_label(cached_git(local))}")
+    else:
+        st.caption("❌ Ordner fehlt")
+
+    if not compact and cat:
+        for label, text in route_lines(app):
+            st.markdown(f"- {label}: {text}")
+
+
 def render_overview(apps: list[dict]) -> None:
-    st.subheader("Übersicht")
-    cols = st.columns(min(len(apps), 4))
+    st.subheader("Alle Apps (Status)")
+    cols = st.columns(min(len(apps), 4) or 1)
     for i, app in enumerate(apps):
-        local = app.get("local_path") or ""
-        exists = path_exists(local)
-        git = cached_git(local) if exists else {}
         with cols[i % len(cols)]:
-            st.markdown(f"**{app.get('name', '?')}**")
-            st.caption("✅ Ordner" if exists else "❌ Ordner fehlt")
-            if exists:
-                st.caption(git_label(git))
-            wf = app.get("workflow")
-            if wf:
-                st.caption(workflow_badge(app))
+            render_app_card(app, compact=True)
+
+
+def render_route_banner(app: dict) -> None:
+    cat = category_for_app(app)
+    if cat:
+        st.success(f"{cat['icon']} **{cat['title']}** — {cat['short']}")
+    st.markdown("#### Dein Ablauf für diese App")
+    for label, text in route_lines(app):
+        st.markdown(f"**{label}**  \n{text}")
+    if cat:
+        with st.expander("Was du nicht brauchst"):
+            st.write(cat["never"])
 
 
 def render_app_detail(app: dict) -> None:
@@ -116,6 +192,20 @@ def render_app_detail(app: dict) -> None:
 
     st.header(name)
     st.write(app.get("description", ""))
+
+    render_route_banner(app)
+
+    st.divider()
+    btn1, btn2, btn3 = st.columns(3)
+    with btn1:
+        if local and exists and st.button("📂 Ordner öffnen", key=f"folder-{app.get('id')}"):
+            open_folder(local)
+    with btn2:
+        if app.get("github"):
+            st.link_button("GitHub", app["github"])
+    with btn3:
+        rel = (app.get("workflow") or {}).get("release_on", "")
+        st.write("**Typ:**", RELEASE_LABELS.get(rel, rel or "—"))
 
     m1, m2, m3 = st.columns(3)
     with m1:
@@ -134,85 +224,72 @@ def render_app_detail(app: dict) -> None:
         if app.get("repo_folder"):
             st.caption(f"App-Name ≠ Ordner: Repository heißt {app['repo_folder']}")
 
-    if app.get("github"):
-        st.link_button("GitHub öffnen", app["github"])
-
     wf = app.get("workflow")
-    if wf:
-        st.subheader("Wohin & wie?")
-        st.info(wf.get("summary", ""))
-        c1, c2 = st.columns(2)
-        with c1:
-            st.write("**Entwicklung:**", wf.get("dev_on", "—"))
-        with c2:
-            rel = wf.get("release_on", "—")
-            st.write("**Release:**", RELEASE_LABELS.get(rel, rel))
-        steps = wf.get("steps") or []
-        if steps:
-            st.markdown("**Schritt für Schritt**")
-            for i, step in enumerate(steps, start=1):
-                if isinstance(step, str):
-                    st.markdown(f"{i}. {step}")
-                else:
-                    st.markdown(f"**{i}. {step.get('title', '')}**")
-                    if step.get("detail"):
-                        st.write(step["detail"])
-
-    meta = st.columns(3)
-    with meta[0]:
-        if app.get("stack"):
-            st.write("**Stack:**", ", ".join(app["stack"]))
-    with meta[1]:
-        if app.get("tags"):
-            st.write("**Tags:**", ", ".join(app["tags"]))
-    with meta[2]:
-        if app.get("targets"):
-            st.write("**Ziele:**", ", ".join(app["targets"]))
+    if wf and wf.get("steps"):
+        st.subheader("Schritt für Schritt")
+        for i, step in enumerate(wf["steps"], start=1):
+            if isinstance(step, str):
+                st.markdown(f"{i}. {step}")
+            else:
+                st.markdown(f"**{i}. {step.get('title', '')}**")
+                if step.get("detail"):
+                    st.write(step["detail"])
 
     commands: dict[str, str] = app.get("commands") or {}
     primary = pick_primary_command(commands)
+    rel = (wf or {}).get("release_on", "")
 
     if primary and exists:
         key, script = primary
-        st.subheader("Schnellstart")
+        where = (
+            "Am Windows-PC ausführen"
+            if rel in ("mac_ios", "vercel", "android_usb", "windows", "local", "")
+            else "Ausführen"
+        )
+        st.subheader(f"Befehl jetzt ({where})")
         full = script_for_powershell(local, script)
         st.code(full, language="powershell")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.caption(f"Primärer Befehl: `{key}` (Codeblock oben → Kopieren)")
-        with c2:
-            if st.button(
-                "In neuem PowerShell-Fenster starten",
-                key=f"run-{app.get('id')}-{key}",
-                type="primary",
-            ):
-                st.session_state[f"confirm-run-{app.get('id')}"] = True
-        if st.session_state.get(f"confirm-run-{app.get('id')}"):
+        if rel == "mac_ios":
             st.warning(
-                "Startet einen Befehl auf deinem PC. Nur nutzen, wenn du dem Skript vertraust."
+                "Dieser Befehl ist für den **PC** (Entwicklung/Test). "
+                "Fürs iPhone/iPad die Schritte auf dem **Mac** nutzen (nach git pull)."
             )
+        elif rel == "vercel" and key == "dev":
+            st.info(
+                "dev = nur lokal testen. Live für alle: Befehl **deploy** (git push → Vercel)."
+            )
+        if st.button(
+            "In neuem PowerShell-Fenster starten",
+            key=f"run-{app.get('id')}-{key}",
+            type="primary",
+        ):
+            st.session_state[f"confirm-run-{app.get('id')}"] = True
+        if st.session_state.get(f"confirm-run-{app.get('id')}"):
+            st.caption("Nur auf dem PC ausführen, wenn du dem Skript vertraust.")
             if st.button("Ja, PowerShell öffnen", key=f"confirm-{app.get('id')}"):
                 open_in_powershell(full)
-                st.success("PowerShell-Fenster geöffnet.")
+                st.success("PowerShell geöffnet.")
                 del st.session_state[f"confirm-run-{app.get('id')}"]
 
     if app.get("prerequisites"):
-        with st.expander("Voraussetzungen", expanded=False):
+        with st.expander("Voraussetzungen"):
             for line in app["prerequisites"]:
                 st.write(f"- {line}")
 
     if commands:
-        st.subheader("Alle Befehle")
+        st.subheader("Alle Befehle (meist Windows-PC)")
+        if rel == "mac_ios":
+            st.caption("Mac-Befehle: nach git pull auf dem Mac dieselben npm/flutter-Befehle im Projektordner.")
         for cmd_key, script in commands.items():
-            label = f"`{cmd_key}`" + (" (Standard)" if primary and cmd_key == primary[0] else "")
-            st.markdown(label)
+            label = f"{cmd_key}" + (" ← Standard" if primary and cmd_key == primary[0] else "")
+            st.markdown(f"**{label}**")
             body = script_for_powershell(local, script) if exists and local else script.strip()
             st.code(body, language="powershell")
 
     if app.get("notes"):
-        st.subheader("Hinweise")
-        for note in app["notes"]:
-            st.write(f"- {note}")
+        with st.expander("Hinweise"):
+            for note in app["notes"]:
+                st.write(f"- {note}")
 
 
 def main() -> None:
@@ -237,37 +314,30 @@ def main() -> None:
     )
 
     st.sidebar.divider()
-    app_names = [a.get("name", a.get("id", "?")) for a in filtered]
-    if not app_names:
+    nav = ["Wegweiser", "Übersicht", *[a.get("name", a.get("id", "?")) for a in filtered]]
+    if not filtered and q:
         st.sidebar.warning("Keine App passt zum Filter.")
-        page = None
+        page = "Wegweiser"
     else:
-        page = st.sidebar.radio("App", ["Übersicht", *app_names], index=0)
+        page = st.sidebar.radio("Navigation", nav, index=0)
 
     st.title("App-Cockpit")
-    st.caption("Nachschlagebuch und Starter für deine Apps")
 
-    if page == "Übersicht" or page is None:
-        render_overview(filtered if filtered else apps)
+    if page == "Wegweiser":
+        render_guide_page(filtered if filtered else apps)
+    elif page == "Übersicht":
+        render_guide_page(filtered if filtered else apps)
         st.divider()
-        st.info("Links eine App wählen für Details, Schnellstart und alle Befehle.")
-        with st.expander("Playbook als Markdown herunterladen"):
-            md = playbook_markdown(sort_apps_by_name(filtered if filtered else apps))
-            st.download_button(
-                "PLAYBOOK.md",
-                data=md,
-                file_name="PLAYBOOK.md",
-                mime="text/markdown",
-            )
-    else:
+        render_overview(filtered if filtered else apps)
+        with st.expander("Playbook als Markdown"):
+            md = playbook_markdown(filtered if filtered else apps)
+            st.download_button("PLAYBOOK.md", data=md, file_name="PLAYBOOK.md", mime="text/markdown")
+    elif page:
         app = next(a for a in filtered if a.get("name") == page)
         render_app_detail(app)
 
     st.sidebar.divider()
-    st.sidebar.markdown(
-        "**Pflegen:** `apps.yaml` bearbeiten, dann „Status neu laden“.\n\n"
-        "**Start:** `tools\\run-cockpit.ps1`"
-    )
+    st.sidebar.markdown("**Tipp:** Zuerst „Wegweiser“ lesen.")
 
 
 if __name__ == "__main__":
