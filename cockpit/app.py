@@ -166,11 +166,35 @@ def render_app_card(app: dict, *, compact: bool = False) -> None:
 
 
 def render_overview(apps: list[dict]) -> None:
-    st.subheader("Alle Apps (Status)")
-    cols = st.columns(min(len(apps), 4) or 1)
-    for i, app in enumerate(apps):
-        with cols[i % len(cols)]:
-            render_app_card(app, compact=True)
+    st.subheader("Status aller Apps")
+    if not apps:
+        st.warning("Keine Apps in der Liste (Filter prüfen oder apps.yaml).")
+        return
+
+    st.caption("Grün = Ordner da · Git-Zeile = Stand im Repository")
+
+    by_type: dict[str, list[dict]] = {}
+    for app in apps:
+        rel = (app.get("workflow") or {}).get("release_on", "other")
+        by_type.setdefault(rel, []).append(app)
+
+    for cat in CATEGORIES:
+        group = by_type.get(cat["release_on"], [])
+        if not group:
+            continue
+        st.markdown(f"#### {cat['icon']} {cat['title']}")
+        cols = st.columns(min(len(group), 4) or 1)
+        for i, app in enumerate(group):
+            with cols[i % len(cols)]:
+                render_app_card(app, compact=True)
+
+    other = by_type.get("other", [])
+    if other:
+        st.markdown("#### 📦 Sonstige")
+        cols = st.columns(min(len(other), 4) or 1)
+        for i, app in enumerate(other):
+            with cols[i % len(cols)]:
+                render_app_card(app, compact=True)
 
 
 def render_route_banner(app: dict) -> None:
@@ -314,27 +338,37 @@ def main() -> None:
     )
 
     st.sidebar.divider()
-    nav = ["Wegweiser", "Übersicht", *[a.get("name", a.get("id", "?")) for a in filtered]]
-    if not filtered and q:
+    display_apps = filtered if filtered else apps
+    nav = ["Wegweiser", "Übersicht", *[a.get("name", a.get("id", "?")) for a in display_apps]]
+
+    if not display_apps and q:
         st.sidebar.warning("Keine App passt zum Filter.")
         page = "Wegweiser"
     else:
-        page = st.sidebar.radio("Navigation", nav, index=0)
-
-    st.title("App-Cockpit")
+        page = st.sidebar.radio("Navigation", nav, key="cockpit_nav")
 
     if page == "Wegweiser":
-        render_guide_page(filtered if filtered else apps)
+        st.title("Wegweiser")
+        st.caption("Wohin mit welcher App?")
+        render_guide_page(display_apps)
     elif page == "Übersicht":
-        render_guide_page(filtered if filtered else apps)
-        st.divider()
-        render_overview(filtered if filtered else apps)
-        with st.expander("Playbook als Markdown"):
-            md = playbook_markdown(filtered if filtered else apps)
-            st.download_button("PLAYBOOK.md", data=md, file_name="PLAYBOOK.md", mime="text/markdown")
+        st.title("Übersicht")
+        st.caption("Ordner- und Git-Status — nach Typ gruppiert")
+        render_overview(display_apps)
+        with st.expander("Playbook als Markdown herunterladen"):
+            md = playbook_markdown(display_apps)
+            st.download_button(
+                "PLAYBOOK.md",
+                data=md,
+                file_name="PLAYBOOK.md",
+                mime="text/markdown",
+            )
     elif page:
-        app = next(a for a in filtered if a.get("name") == page)
+        app = next(a for a in display_apps if a.get("name") == page)
         render_app_detail(app)
+    else:
+        st.title("App-Cockpit")
+        st.info("Wähle links **Wegweiser** oder **Übersicht**.")
 
     st.sidebar.divider()
     st.sidebar.markdown("**Tipp:** Zuerst „Wegweiser“ lesen.")
