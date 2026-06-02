@@ -116,9 +116,9 @@ def render_guide_page(apps: list[dict]) -> None:
             continue
         with st.expander(
             f"{cat['title']} — {', '.join(a.get('name', '?') for a in group)}",
-            expanded=False,
+            expanded=cat["release_on"] == "mac_ios",
         ):
-            st.markdown(f"**Kurz:** {cat['short']}")
+            st.info(f"**Kurz:** {cat['short']}")
             t1, t2, t3 = st.columns(3)
             with t1:
                 st.markdown("**Entwickeln**")
@@ -129,7 +129,7 @@ def render_guide_page(apps: list[dict]) -> None:
             with t3:
                 st.markdown("**Starten / Nutzen**")
                 st.write(cat["where_run"])
-            st.caption(f"Nicht: {cat['never']}")
+            st.caption(f"**Nicht nötig:** {cat['never']}")
             for app in group:
                 st.markdown(f"- **{app.get('name')}** → Sidebar anklicken für Befehle")
 
@@ -155,9 +155,9 @@ def render_app_card(app: dict, *, compact: bool = False) -> None:
     if cat:
         st.caption(cat["short"])
     if exists:
-        st.caption(f"Ordner: OK · Git: {git_label(cached_git(local))}")
+        st.caption(f"✅ Ordner · Git: {git_label(cached_git(local))}")
     else:
-        st.caption("Ordner: fehlt")
+        st.caption("❌ Ordner fehlt")
 
     if not compact and cat:
         for label, text in route_lines(app):
@@ -170,7 +170,7 @@ def render_overview(apps: list[dict]) -> None:
         st.warning("Keine Apps in der Liste (Filter prüfen oder apps.yaml).")
         return
 
-    st.caption("Ordner: OK oder fehlt · Git-Zeile = Stand im Repository")
+    st.caption("✅ = Ordner vorhanden · ❌ = Pfad fehlt · Git-Zeile = Repository-Stand")
 
     by_type: dict[str, list[dict]] = {}
     for app in apps:
@@ -199,8 +199,8 @@ def render_overview(apps: list[dict]) -> None:
 def render_route_banner(app: dict) -> None:
     cat = category_for_app(app)
     if cat:
-        st.markdown(f"**{cat['title']}** — {cat['short']}")
-    st.markdown("#### Ablauf")
+        st.success(f"**{cat['title']}** — {cat['short']}")
+    st.markdown("#### Dein Ablauf")
     for label, text in route_lines(app):
         st.markdown(f"**{label}**  \n{text}")
     if cat:
@@ -273,13 +273,13 @@ def render_app_detail(app: dict) -> None:
         full = script_for_powershell(local, script)
         st.code(full, language="powershell")
         if rel == "mac_ios":
-            st.caption(
-                "Befehl für den PC (Entwicklung/Test). "
-                "Fürs iPhone/iPad: Schritte auf dem Mac nach git pull."
+            st.warning(
+                "**Windows-PC:** Dieser Befehl ist für Entwicklung/Test hier. "
+                "**Mac:** Fürs iPhone/iPad die Schritte oben auf dem Mac (nach **git pull**)."
             )
         elif rel == "vercel" and key == "dev":
-            st.caption(
-                "dev = nur lokal testen. Live für alle: Befehl deploy (git push → Vercel)."
+            st.info(
+                "**dev** = nur lokal testen. **Live für alle:** Befehl **deploy** (git push → Vercel)."
             )
         if st.button(
             "In neuem PowerShell-Fenster starten",
@@ -302,7 +302,9 @@ def render_app_detail(app: dict) -> None:
     if commands:
         st.subheader("Alle Befehle (meist Windows-PC)")
         if rel == "mac_ios":
-            st.caption("Mac-Befehle: nach git pull auf dem Mac dieselben npm/flutter-Befehle im Projektordner.")
+            st.info(
+                "**Mac:** Nach **git pull** dieselben npm/flutter-Befehle im Projektordner ausführen."
+            )
         for cmd_key, script in commands.items():
             label = f"{cmd_key}" + (" ← Standard" if primary and cmd_key == primary[0] else "")
             st.markdown(f"**{label}**")
