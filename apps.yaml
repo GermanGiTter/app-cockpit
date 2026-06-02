@@ -31,6 +31,19 @@ apps:
     prerequisites:
       - "Flutter SDK (flutter doctor ohne kritische Fehler)"
       - Android SDK für Android; Xcode + CocoaPods für iOS/macOS
+    commands_mac:
+      sync: |
+        cd chrona
+        git pull
+        flutter pub get
+      ios_pods: |
+        cd chrona/ios
+        pod install
+        cd ..
+      run_device: |
+        cd chrona
+        flutter devices
+        flutter run --release
     commands:
       install: |
         git clone https://github.com/GermanGiTter/chrona
@@ -109,6 +122,18 @@ apps:
       ios: |
         cd chordquest
         npm run cap:ios
+    commands_mac:
+      sync: |
+        cd chordquest
+        git pull
+        npm install
+      build_cap: |
+        cd chordquest
+        npm run build
+        npx cap sync
+      xcode: |
+        cd chordquest
+        npm run cap:ios
     notes:
       - "dev:ipad zeigt Netzwerk-URL für Gerät im WLAN."
 
@@ -160,6 +185,14 @@ apps:
       test: |
         cd Cello
         npm test
+    commands_mac:
+      sync: |
+        cd Cello
+        git pull
+        npm install
+      ios_device: |
+        cd Cello
+        npm run ios
     notes:
       - Paketname in package.json ist cellora; Ordner heißt Cello.
 
@@ -308,8 +341,13 @@ apps:
         # In Android Studio: File → Open → ALLES-ZU-Ordner, Gradle Sync, Run (▶)
       apk: |
         # Android Studio: Build → Build APK(s)
+    docs:
+      - label: INSTALLATION
+        file: INSTALLATION.md
+      - label: README
+        file: README.md
     notes:
-      - Schritt-für-Schritt in ALLES-ZU/INSTALLATION.md.
+      - Schritt-für-Schritt in INSTALLATION.md im Projektordner.
       - GitHub-Repo heißt alles-zu, lokaler Ordner ALLES-ZU.
 
   - id: einkaufsliste
@@ -320,6 +358,13 @@ apps:
     tags: [web]
     local_path: C:\Users\rare\.gemini\antigravity\playground\retrograde-filament
     repo_folder: retrograde-filament
+    live_url: https://einkaufsliste-neu.vercel.app
+    nav_short: Vercel
+    docs:
+      - label: PUSH-CHECKLISTE
+        file: PUSH-CHECKLISTE.md
+      - label: README
+        file: README.md
     targets: [web]
     workflow:
       dev_on: windows

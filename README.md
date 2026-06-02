@@ -65,11 +65,12 @@ streamlit run cockpit\app.py
 
 ## Was die Oberfläche kann
 
-- **Übersicht** — alle 7 Apps: Ordner vorhanden?, Git-Branch, sauber/geändert, ahead/behind
-- **App-Detail** — Beschreibung, Schnellstart (`dev` o. Ä.), alle Befehle mit festem `Set-Location`
-- **Filter** — Suche, Tags, Stack (Sidebar)
-- **PowerShell** — Schnellstart optional in neuem Fenster (mit Bestätigung)
-- **PLAYBOOK.md** — Download aus derselben `apps.yaml`
+- **Wegweiser** (Start) — Muster: PC / Mac / Vercel / Android
+- **Schnellreferenz** — eine Seite, als Markdown / druckbar
+- **Übersicht** — Status, offene Punkte (Pfad fehlt, Git geändert)
+- **App-Detail** — Ablauf, Checkliste, Setup / Windows / Mac getrennt, Doku-Links
+- **Neue App** — YAML-Vorlage in der Sidebar
+- **PLAYBOOK.md** — Download aus `apps.yaml`
 
 Daten pflegen weiter nur in **`apps.yaml`** — UI liest dieselbe Datei.
 
