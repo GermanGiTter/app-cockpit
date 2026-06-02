@@ -273,9 +273,9 @@ def render_app_detail(app: dict) -> None:
         full = script_for_powershell(local, script)
         st.code(full, language="powershell")
         if rel == "mac_ios":
-            st.warning(
-                "Dieser Befehl ist für den **PC** (Entwicklung/Test). "
-                "Fürs iPhone/iPad die Schritte auf dem **Mac** nutzen (nach git pull)."
+            st.caption(
+                "Befehl für den PC (Entwicklung/Test). "
+                "Fürs iPhone/iPad: Schritte auf dem Mac nach git pull."
             )
         elif rel == "vercel" and key == "dev":
             st.caption(
