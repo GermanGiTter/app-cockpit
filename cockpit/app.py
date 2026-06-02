@@ -115,8 +115,8 @@ def render_guide_page(apps: list[dict]) -> None:
         if not group:
             continue
         with st.expander(
-            f"{cat['icon']} {cat['title']} — {', '.join(a.get('name', '?') for a in group)}",
-            expanded=cat["release_on"] == "mac_ios",
+            f"{cat['title']} — {', '.join(a.get('name', '?') for a in group)}",
+            expanded=False,
         ):
             st.markdown(f"**Kurz:** {cat['short']}")
             t1, t2, t3 = st.columns(3)
@@ -150,15 +150,14 @@ def render_app_card(app: dict, *, compact: bool = False) -> None:
     local = app.get("local_path") or ""
     exists = path_exists(local)
     cat = category_for_app(app)
-    icon = cat["icon"] if cat else "📦"
 
-    st.markdown(f"{icon} **{name}**")
+    st.markdown(f"**{name}**")
     if cat:
         st.caption(cat["short"])
     if exists:
-        st.caption(f"Git: {git_label(cached_git(local))}")
+        st.caption(f"Ordner: OK · Git: {git_label(cached_git(local))}")
     else:
-        st.caption("❌ Ordner fehlt")
+        st.caption("Ordner: fehlt")
 
     if not compact and cat:
         for label, text in route_lines(app):
@@ -171,7 +170,7 @@ def render_overview(apps: list[dict]) -> None:
         st.warning("Keine Apps in der Liste (Filter prüfen oder apps.yaml).")
         return
 
-    st.caption("Grün = Ordner da · Git-Zeile = Stand im Repository")
+    st.caption("Ordner: OK oder fehlt · Git-Zeile = Stand im Repository")
 
     by_type: dict[str, list[dict]] = {}
     for app in apps:
@@ -182,7 +181,7 @@ def render_overview(apps: list[dict]) -> None:
         group = by_type.get(cat["release_on"], [])
         if not group:
             continue
-        st.markdown(f"#### {cat['icon']} {cat['title']}")
+        st.markdown(f"#### {cat['title']}")
         cols = st.columns(min(len(group), 4) or 1)
         for i, app in enumerate(group):
             with cols[i % len(cols)]:
@@ -190,7 +189,7 @@ def render_overview(apps: list[dict]) -> None:
 
     other = by_type.get("other", [])
     if other:
-        st.markdown("#### 📦 Sonstige")
+        st.markdown("#### Sonstige")
         cols = st.columns(min(len(other), 4) or 1)
         for i, app in enumerate(other):
             with cols[i % len(cols)]:
@@ -200,8 +199,8 @@ def render_overview(apps: list[dict]) -> None:
 def render_route_banner(app: dict) -> None:
     cat = category_for_app(app)
     if cat:
-        st.success(f"{cat['icon']} **{cat['title']}** — {cat['short']}")
-    st.markdown("#### Dein Ablauf für diese App")
+        st.markdown(f"**{cat['title']}** — {cat['short']}")
+    st.markdown("#### Ablauf")
     for label, text in route_lines(app):
         st.markdown(f"**{label}**  \n{text}")
     if cat:
@@ -222,7 +221,7 @@ def render_app_detail(app: dict) -> None:
     st.divider()
     btn1, btn2, btn3 = st.columns(3)
     with btn1:
-        if local and exists and st.button("📂 Ordner öffnen", key=f"folder-{app.get('id')}"):
+        if local and exists and st.button("Ordner öffnen", key=f"folder-{app.get('id')}"):
             open_folder(local)
     with btn2:
         if app.get("github"):
@@ -279,8 +278,8 @@ def render_app_detail(app: dict) -> None:
                 "Fürs iPhone/iPad die Schritte auf dem **Mac** nutzen (nach git pull)."
             )
         elif rel == "vercel" and key == "dev":
-            st.info(
-                "dev = nur lokal testen. Live für alle: Befehl **deploy** (git push → Vercel)."
+            st.caption(
+                "dev = nur lokal testen. Live für alle: Befehl deploy (git push → Vercel)."
             )
         if st.button(
             "In neuem PowerShell-Fenster starten",
@@ -317,7 +316,7 @@ def render_app_detail(app: dict) -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="App-Cockpit", page_icon="🧭", layout="wide")
+    st.set_page_config(page_title="App-Cockpit", layout="wide")
     data = load_manifest()
     apps: list[dict] = sort_apps_by_name(data.get("apps", []))
 

@@ -6,7 +6,6 @@ from __future__ import annotations
 CATEGORIES: list[dict] = [
     {
         "release_on": "mac_ios",
-        "icon": "🍎",
         "title": "Windows → Mac → iPhone / iPad",
         "short": "PC entwickeln · Mac baut · Gerät startet",
         "where_dev": "Dein Windows-PC (Playground-Ordner)",
@@ -17,7 +16,6 @@ CATEGORIES: list[dict] = [
     },
     {
         "release_on": "vercel",
-        "icon": "🌐",
         "title": "Windows → Vercel (Internet)",
         "short": "PC testen · Live nur in der Cloud",
         "where_dev": "Windows-PC, Ordner retrograde-filament",
@@ -28,7 +26,6 @@ CATEGORIES: list[dict] = [
     },
     {
         "release_on": "android_usb",
-        "icon": "📱",
         "title": "Windows → Android-Handy (USB)",
         "short": "Android Studio am PC · APK/Run aufs Handy",
         "where_dev": "Windows-PC mit Android Studio",
@@ -39,7 +36,6 @@ CATEGORIES: list[dict] = [
     },
     {
         "release_on": "windows",
-        "icon": "💻",
         "title": "Nur Windows-PC",
         "short": "Alles auf einem Rechner",
         "where_dev": "Windows-PC",
@@ -50,7 +46,6 @@ CATEGORIES: list[dict] = [
     },
     {
         "release_on": "local",
-        "icon": "🏠",
         "title": "Nur lokal auf dem PC",
         "short": "Browser oder EXE — nichts online",
         "where_dev": "Windows-PC",
