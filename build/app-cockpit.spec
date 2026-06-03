@@ -17,6 +17,7 @@ pd_datas, pd_binaries, pd_hidden = collect_all("pandas")
 cockpit_hidden = [
     "cockpit",
     "cockpit.lib",
+    "cockpit.lib.git_batch",
     "cockpit.lib.checklist",
     "cockpit.lib.commands",
     "cockpit.lib.manifest",

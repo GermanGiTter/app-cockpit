@@ -36,6 +36,11 @@ from cockpit.lib.manifest import (
 )
 from cockpit.lib.new_app import build_app_yaml
 from cockpit.lib.quickref import quickref_markdown
+from cockpit.lib.git_batch import (
+    find_dirty_projects,
+    preview_lines,
+    run_batch,
+)
 from cockpit.lib.status import git_status, path_exists, pick_primary_command, script_for_powershell
 from cockpit.lib.workflow_guide import CATEGORIES, apps_in_category, category_for_app, route_lines
 
@@ -126,7 +131,7 @@ def render_git_alerts(app: dict, local: str) -> None:
 
 def render_open_issues(apps: list[dict]) -> None:
     missing = []
-    dirty = []
+    dirty_names = []
     for app in apps:
         local = app.get("local_path") or ""
         ok, _ = path_diagnosis(local)
@@ -135,14 +140,121 @@ def render_open_issues(apps: list[dict]) -> None:
         elif path_exists(local):
             g = cached_git(local)
             if g.get("dirty"):
-                dirty.append(app.get("name", "?"))
-    if not missing and not dirty:
+                dirty_names.append(app.get("name", "?"))
+    if not missing and not dirty_names:
         st.success("**Alles in Ordnung** — alle Pfade vorhanden, keine uncommitteten Änderungen.")
         return
     if missing:
         st.error("**Ordner fehlt:** " + ", ".join(missing))
-    if dirty:
-        st.warning("**Git geändert (uncommitted):** " + ", ".join(dirty))
+    if dirty_names:
+        st.warning("**Git geändert (uncommitted):** " + ", ".join(dirty_names))
+
+
+def render_batch_git(apps: list[dict]) -> None:
+    dirty = find_dirty_projects(apps)
+    if not dirty:
+        return
+
+    st.subheader("Git: Ausgewählte Projekte committen / pushen")
+    st.caption(
+        "Nur Projekte mit **uncommitteten Änderungen**. "
+        "Aktion läuft in den jeweiligen Projektordnern auf deinem PC."
+    )
+
+    by_name = {p.name: p for p in dirty}
+    labels = {
+        p.name: f"{p.name} ({p.branch or '?'}"
+        + (f", ↑{p.ahead}" if p.ahead else "")
+        + ")"
+        for p in dirty
+    }
+    picked = st.multiselect(
+        "Projekte auswählen",
+        options=list(by_name.keys()),
+        default=list(by_name.keys()),
+        format_func=lambda n: labels[n],
+        key="batch_git_projects",
+    )
+    selected = [by_name[n] for n in picked]
+
+    if not selected:
+        st.info("Kein Projekt ausgewählt.")
+        return
+
+    commit_msg = st.text_input(
+        "Commit-Nachricht (für alle ausgewählten Projekte gleich)",
+        key="batch_commit_msg",
+        placeholder="z. B. Stand nach Cockpit-Update",
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        do_commit = st.checkbox("Commit (git add -A + commit)", value=True, key="batch_do_commit")
+    with c2:
+        do_push = st.checkbox("Push (git push)", value=False, key="batch_do_push")
+
+    if do_push and not do_commit:
+        st.caption("Push ohne Commit: nur wenn der Stand bereits committed ist.")
+
+    st.markdown("**Vorschau**")
+    if do_commit and not commit_msg.strip():
+        st.caption("Commit-Nachricht fehlt noch.")
+    else:
+        for line in preview_lines(selected, message=commit_msg, do_commit=do_commit, do_push=do_push):
+            st.code(line, language=None)
+
+    if st.button("Aktion ausführen …", type="primary", key="batch_git_prepare"):
+        if do_commit and not commit_msg.strip():
+            st.error("Bitte eine Commit-Nachricht eingeben.")
+        elif not do_commit and not do_push:
+            st.error("Bitte Commit und/oder Push aktivieren.")
+        else:
+            st.session_state["batch_git_pending"] = {
+                "ids": [p.app_id for p in selected],
+                "message": commit_msg.strip(),
+                "do_commit": do_commit,
+                "do_push": do_push,
+            }
+
+    pending = st.session_state.get("batch_git_pending")
+    if pending:
+        st.warning(
+            f"**Bestätigung:** {len(pending['ids'])} Projekt(e) — "
+            f"Commit: {'ja' if pending['do_commit'] else 'nein'}, "
+            f"Push: {'ja' if pending['do_push'] else 'nein'}. "
+            "Das kann nicht rückgängig gemacht werden."
+        )
+        col_yes, col_no = st.columns(2)
+        with col_yes:
+            if st.button("Ja, jetzt ausführen", key="batch_git_confirm"):
+                id_set = set(pending["ids"])
+                to_run = [p for p in dirty if p.app_id in id_set]
+                results = run_batch(
+                    to_run,
+                    message=pending["message"],
+                    do_commit=pending["do_commit"],
+                    do_push=pending["do_push"],
+                )
+                del st.session_state["batch_git_pending"]
+                st.cache_data.clear()
+                st.session_state["batch_git_results"] = results
+                st.rerun()
+        with col_no:
+            if st.button("Abbrechen", key="batch_git_cancel"):
+                del st.session_state["batch_git_pending"]
+                st.rerun()
+
+    results = st.session_state.get("batch_git_results")
+    if results:
+        st.subheader("Ergebnis")
+        for r in results:
+            icon = "OK" if r.success else "Fehler"
+            st.markdown(f"**{r.name}** — {icon}")
+            for step in r.steps:
+                mark = "OK" if step.ok else "Fehler"
+                st.caption(f"{step.action}: {mark} — {step.detail[:500]}")
+        if st.button("Ergebnis schließen", key="batch_git_clear_results"):
+            del st.session_state["batch_git_results"]
+            st.rerun()
 
 
 def render_docs_links(app: dict) -> None:
@@ -272,8 +384,6 @@ def render_app_card(app: dict) -> None:
 
 
 def render_overview(apps: list[dict]) -> None:
-    render_open_issues(apps)
-    st.divider()
     st.subheader("Status nach Muster")
     st.caption("✅ = Ordner vorhanden · ❌ = Pfad fehlt")
     by_type: dict[str, list[dict]] = {}
@@ -472,7 +582,11 @@ def main() -> None:
         render_quickref_page(display_apps if display_apps else apps)
     elif page_id == "__overview__":
         st.title("Übersicht")
-        render_overview(display_apps if display_apps else apps)
+        overview_apps = display_apps if display_apps else apps
+        render_open_issues(overview_apps)
+        render_batch_git(overview_apps)
+        st.divider()
+        render_overview(overview_apps)
         with st.expander("Playbook.md"):
             md = playbook_markdown(display_apps if display_apps else apps)
             st.download_button("PLAYBOOK.md", data=md, file_name="PLAYBOOK.md", mime="text/markdown")
