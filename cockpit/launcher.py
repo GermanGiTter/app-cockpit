@@ -18,6 +18,17 @@ from pathlib import Path
 from cockpit.lib.paths import bundle_root, cockpit_app_path, data_root, is_frozen, manifest_path
 
 
+def _import_cockpit_libs() -> None:
+    """Alle Lib-Module laden, damit PyInstaller sie in die EXE packt."""
+    import cockpit.lib.checklist  # noqa: F401
+    import cockpit.lib.commands  # noqa: F401
+    import cockpit.lib.manifest  # noqa: F401
+    import cockpit.lib.new_app  # noqa: F401
+    import cockpit.lib.quickref  # noqa: F401
+    import cockpit.lib.status  # noqa: F401
+    import cockpit.lib.workflow_guide  # noqa: F401
+
+
 def _setup_paths() -> None:
     root = bundle_root()
     if str(root) not in sys.path:
@@ -40,6 +51,7 @@ def _open_browser(port: str) -> None:
 
 def main() -> None:
     _setup_paths()
+    _import_cockpit_libs()
     os.chdir(data_root())
     _ensure_apps_yaml()
 

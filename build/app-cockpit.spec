@@ -13,8 +13,25 @@ st_datas, st_binaries, st_hidden = collect_all("streamlit")
 al_datas, al_binaries, al_hidden = collect_all("altair")
 pd_datas, pd_binaries, pd_hidden = collect_all("pandas")
 
+# Nur app.yaml + app.py als Dateien; cockpit/lib wird als Python-Module gebündelt
+cockpit_hidden = [
+    "cockpit",
+    "cockpit.lib",
+    "cockpit.lib.checklist",
+    "cockpit.lib.commands",
+    "cockpit.lib.manifest",
+    "cockpit.lib.new_app",
+    "cockpit.lib.paths",
+    "cockpit.lib.quickref",
+    "cockpit.lib.status",
+    "cockpit.lib.workflow_guide",
+]
+
 datas = (
-    [(str(root / "apps.yaml"), "."), (str(root / "cockpit"), "cockpit")]
+    [
+        (str(root / "apps.yaml"), "."),
+        (str(root / "cockpit" / "app.py"), "cockpit"),
+    ]
     + st_datas
     + al_datas
     + pd_datas
@@ -27,6 +44,7 @@ hiddenimports = (
         "tornado.platform.asyncio",
         "click",
     ]
+    + cockpit_hidden
     + st_hidden
     + al_hidden
     + pd_hidden

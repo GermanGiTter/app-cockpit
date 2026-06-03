@@ -42,6 +42,10 @@ if (-not (Test-Path $venvPy)) {
 & $venvPy -m pip install -r (Join-Path $Root "cockpit\requirements.txt") -q
 & $venvPy -m pip install -r (Join-Path $Root "build\requirements-build.txt") -q
 
+# Laufende EXE beenden, sonst schlägt das Überschreiben von dist fehl
+Get-Process -Name "App-Cockpit" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Seconds 1
+
 Write-Host "PyInstaller startet (kann einige Minuten dauern) ..."
 & $venvPy -m PyInstaller (Join-Path $Root "build\app-cockpit.spec") --noconfirm --distpath (Join-Path $Root "dist") --workpath (Join-Path $Root "build\pyi-work")
 

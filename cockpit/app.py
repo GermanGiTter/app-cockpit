@@ -7,6 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# PyInstaller: Streamlit lädt diese Datei separat — Pfad zur gebündelten App setzen
+if getattr(sys, "frozen", False):
+    _meipass = getattr(sys, "_MEIPASS", "")
+    if _meipass and _meipass not in sys.path:
+        sys.path.insert(0, _meipass)
+
 import streamlit as st
 
 from cockpit.lib.paths import bundle_root, data_root
