@@ -150,39 +150,71 @@ def render_open_issues(apps: list[dict]) -> None:
         st.warning("**Git geändert (uncommitted):** " + ", ".join(dirty_names))
 
 
+def _batch_checkbox_key(app_id: str) -> str:
+    return f"batch_chk_{app_id}"
+
+
 def render_batch_git(apps: list[dict]) -> None:
     dirty = find_dirty_projects(apps)
     if not dirty:
         return
 
-    st.subheader("Git: Ausgewählte Projekte committen / pushen")
+    st.subheader("Git: Projekte committen / pushen")
     st.caption(
-        "Nur Projekte mit **uncommitteten Änderungen**. "
-        "Aktion läuft in den jeweiligen Projektordnern auf deinem PC."
+        "Hake unten **explizit** an, welche Projekte mit uncommitteten Änderungen "
+        "in die Aktion sollen."
     )
 
-    by_name = {p.name: p for p in dirty}
-    labels = {
-        p.name: f"{p.name} ({p.branch or '?'}"
-        + (f", ↑{p.ahead}" if p.ahead else "")
-        + ")"
-        for p in dirty
-    }
-    picked = st.multiselect(
-        "Projekte auswählen",
-        options=list(by_name.keys()),
-        default=list(by_name.keys()),
-        format_func=lambda n: labels[n],
-        key="batch_git_projects",
-    )
-    selected = [by_name[n] for n in picked]
+    for proj in dirty:
+        key = _batch_checkbox_key(proj.app_id)
+        if key not in st.session_state:
+            st.session_state[key] = True
+
+    btn_all, btn_none = st.columns(2)
+    with btn_all:
+        if st.button("Alle auswählen", key="batch_git_all", use_container_width=True):
+            for proj in dirty:
+                st.session_state[_batch_checkbox_key(proj.app_id)] = True
+            st.rerun()
+    with btn_none:
+        if st.button("Alle abwählen", key="batch_git_none", use_container_width=True):
+            for proj in dirty:
+                st.session_state[_batch_checkbox_key(proj.app_id)] = False
+            st.rerun()
+
+    st.markdown("**Projekte mit Änderungen**")
+    selected: list = []
+    not_selected: list = []
+    for proj in dirty:
+        branch = proj.branch or "?"
+        extra = f" · {proj.ahead} Commit(s) voraus" if proj.ahead else ""
+        label = f"**{proj.name}** — Branch `{branch}`{extra}"
+        checked = st.checkbox(
+            label,
+            key=_batch_checkbox_key(proj.app_id),
+        )
+        if checked:
+            selected.append(proj)
+        else:
+            not_selected.append(proj)
+
+    st.markdown("**Auswahl**")
+    if selected:
+        names = ", ".join(p.name for p in selected)
+        st.success(f"**Wird ausgeführt ({len(selected)}):** {names}")
+    else:
+        st.error("**Kein Projekt ausgewählt** — bitte mindestens eines ankreuzen.")
+
+    if not_selected:
+        st.caption(
+            "**Nicht dabei:** " + ", ".join(p.name for p in not_selected)
+        )
 
     if not selected:
-        st.info("Kein Projekt ausgewählt.")
         return
 
     commit_msg = st.text_input(
-        "Commit-Nachricht (für alle ausgewählten Projekte gleich)",
+        "Commit-Nachricht (gleich für alle ausgewählten Projekte)",
         key="batch_commit_msg",
         placeholder="z. B. Stand nach Cockpit-Update",
     )
@@ -217,10 +249,13 @@ def render_batch_git(apps: list[dict]) -> None:
 
     pending = st.session_state.get("batch_git_pending")
     if pending:
+        confirm_names = [
+            p.name for p in dirty if p.app_id in set(pending["ids"])
+        ]
         st.warning(
-            f"**Bestätigung:** {len(pending['ids'])} Projekt(e) — "
-            f"Commit: {'ja' if pending['do_commit'] else 'nein'}, "
-            f"Push: {'ja' if pending['do_push'] else 'nein'}. "
+            f"**Bestätigung für:** {', '.join(confirm_names)}\n\n"
+            f"Commit: **{'ja' if pending['do_commit'] else 'nein'}** · "
+            f"Push: **{'ja' if pending['do_push'] else 'nein'}**\n\n"
             "Das kann nicht rückgängig gemacht werden."
         )
         col_yes, col_no = st.columns(2)
