@@ -33,23 +33,27 @@ class BatchProjectResult:
     success: bool
 
 
-def find_dirty_projects(apps: list[dict]) -> list[DirtyProject]:
+def find_dirty_projects(
+    apps: list[dict],
+    snapshot: dict[str, dict],
+) -> list[DirtyProject]:
+    """Nutzt einen Git-Snapshot — kein erneutes Scannen aller Repos."""
     out: list[DirtyProject] = []
     for app in apps:
         local = app.get("local_path") or ""
         ok, _ = path_diagnosis(local)
         if not ok or not path_exists(local):
             continue
-        gs = git_status(local)
-        if not gs.is_repo or not gs.dirty:
+        data = snapshot.get(local, {})
+        if not data.get("is_repo") or not data.get("dirty"):
             continue
         out.append(
             DirtyProject(
                 app_id=app.get("id", ""),
                 name=app.get("name", app.get("id", "?")),
                 local_path=local,
-                branch=gs.branch,
-                ahead=gs.ahead,
+                branch=data.get("branch"),
+                ahead=data.get("ahead"),
             )
         )
     return out

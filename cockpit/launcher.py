@@ -21,6 +21,9 @@ from cockpit.lib.paths import bundle_root, cockpit_app_path, data_root, is_froze
 def _import_cockpit_libs() -> None:
     """Alle Lib-Module laden, damit PyInstaller sie in die EXE packt."""
     import cockpit.lib.git_batch  # noqa: F401
+    import cockpit.lib.git_snapshot  # noqa: F401
+    import cockpit.lib.tool_checks  # noqa: F401
+    import cockpit.lib.app_memory  # noqa: F401
     import cockpit.lib.checklist  # noqa: F401
     import cockpit.lib.commands  # noqa: F401
     import cockpit.lib.manifest  # noqa: F401
@@ -45,6 +48,17 @@ def _ensure_apps_yaml() -> None:
         shutil.copy2(bundled, target)
 
 
+def _ensure_streamlit_config() -> None:
+    dest_dir = data_root() / ".streamlit"
+    dest = dest_dir / "config.toml"
+    if dest.exists():
+        return
+    bundled = bundle_root() / ".streamlit" / "config.toml"
+    if bundled.is_file():
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(bundled, dest)
+
+
 def _open_browser(port: str) -> None:
     time.sleep(2.5)
     webbrowser.open(f"http://127.0.0.1:{port}")
@@ -55,6 +69,7 @@ def main() -> None:
     _import_cockpit_libs()
     os.chdir(data_root())
     _ensure_apps_yaml()
+    _ensure_streamlit_config()
 
     app_py = cockpit_app_path()
     if not app_py.is_file():

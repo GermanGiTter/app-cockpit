@@ -18,6 +18,9 @@ cockpit_hidden = [
     "cockpit",
     "cockpit.lib",
     "cockpit.lib.git_batch",
+    "cockpit.lib.git_snapshot",
+    "cockpit.lib.tool_checks",
+    "cockpit.lib.app_memory",
     "cockpit.lib.checklist",
     "cockpit.lib.commands",
     "cockpit.lib.manifest",
@@ -32,6 +35,7 @@ datas = (
     [
         (str(root / "apps.yaml"), "."),
         (str(root / "cockpit" / "app.py"), "cockpit"),
+        (str(root / ".streamlit" / "config.toml"), ".streamlit"),
     ]
     + st_datas
     + al_datas

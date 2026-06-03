@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # PyInstaller: Streamlit lädt diese Datei separat — Pfad zur gebündelten App setzen
@@ -41,7 +42,24 @@ from cockpit.lib.git_batch import (
     preview_lines,
     run_batch,
 )
+from cockpit.lib.git_snapshot import (
+    build_git_snapshot,
+    empty_git_dict,
+    git_status_to_dict,
+    refresh_paths,
+    snapshot_apps_key,
+)
 from cockpit.lib.status import git_status, path_exists, pick_primary_command, script_for_powershell
+from cockpit.lib.app_memory import (
+    all_apps_memory_markdown,
+    command_legend_for_app,
+    memory_bullets,
+    memory_markdown_for_app,
+    primary_action_hint,
+    troubleshooting_for_app,
+    when_lost,
+)
+from cockpit.lib.tool_checks import ToolCheckResult, run_checks_for_app, run_flutter_doctor_summary
 from cockpit.lib.workflow_guide import CATEGORIES, apps_in_category, category_for_app, route_lines
 
 RELEASE_LABELS = {
@@ -54,22 +72,221 @@ RELEASE_LABELS = {
 
 NAV_STATIC = {
     "Wegweiser": "__guide__",
+    "Merksätze": "__memory__",
     "Schnellreferenz": "__quickref__",
     "Übersicht": "__overview__",
 }
 
 
-@st.cache_data(ttl=30)
-def cached_git(path: str) -> dict:
-    gs = git_status(path)
-    return {
-        "is_repo": gs.is_repo,
-        "branch": gs.branch,
-        "dirty": gs.dirty,
-        "ahead": gs.ahead,
-        "behind": gs.behind,
-        "message": gs.message,
-    }
+def _git_snapshot() -> dict[str, dict]:
+    return st.session_state.setdefault("git_snapshot", {})
+
+
+def full_git_snapshot_ready() -> bool:
+    return bool(st.session_state.get("git_snapshot_all"))
+
+
+def load_full_git_snapshot(apps: list[dict]) -> dict[str, dict]:
+    snap = build_git_snapshot(apps)
+    st.session_state["git_snapshot"] = snap
+    st.session_state["git_snapshot_all"] = True
+    st.session_state["git_snapshot_ver"] = snapshot_apps_key(apps)
+    st.session_state["git_snapshot_at"] = datetime.now().strftime("%H:%M:%S")
+    return snap
+
+
+def clear_git_snapshot() -> None:
+    for key in (
+        "git_snapshot",
+        "git_snapshot_all",
+        "git_snapshot_ver",
+        "git_snapshot_at",
+        "overview_git_auto_attempted",
+    ):
+        st.session_state.pop(key, None)
+
+
+def clear_tool_check_cache() -> None:
+    drop = [
+        k
+        for k in st.session_state
+        if k.startswith("tool_checks_")
+        or k.startswith("tool_auto_")
+        or k.startswith("flutter_doctor_")
+    ]
+    for key in drop:
+        st.session_state.pop(key, None)
+
+
+def _tool_cache_key(app_id: str) -> str:
+    return f"tool_checks_{app_id}"
+
+
+def _run_tool_checks(app: dict) -> list[ToolCheckResult]:
+    return run_checks_for_app(app)
+
+
+def render_tool_diagnostics(app: dict, *, path_ok: bool) -> None:
+    """PATH/Versionen und typische Projekt-Probleme (npm install, pub get, …)."""
+    if not path_ok:
+        return
+    app_id = app.get("id", "app")
+    cache_key = _tool_cache_key(app_id)
+    auto_key = f"tool_auto_{app_id}"
+
+    if cache_key not in st.session_state:
+        if not st.session_state.get(auto_key):
+            st.session_state[auto_key] = True
+            with st.spinner("Werkzeuge und Projekt werden geprüft …"):
+                st.session_state[cache_key] = _run_tool_checks(app)
+        else:
+            if st.button("Werkzeuge & Projekt prüfen", key=f"tool-run-{app_id}", type="primary"):
+                with st.spinner("Prüfung läuft …"):
+                    st.session_state[cache_key] = _run_tool_checks(app)
+            st.caption(
+                "Prüft z. B. ob **node**, **npm**, **flutter** im PATH sind "
+                "und ob **node_modules** / **pubspec.lock** fehlen."
+            )
+            return
+
+    if st.button("Werkzeuge erneut prüfen", key=f"tool-refresh-{app_id}"):
+        with st.spinner("Prüfung läuft …"):
+            st.session_state[cache_key] = _run_tool_checks(app)
+
+    results: list[ToolCheckResult] = st.session_state.get(cache_key, [])
+    problems = [r for r in results if not r.ok]
+
+    st.subheader("Umgebung & Werkzeuge")
+    if not results:
+        st.caption("Keine automatischen Checks für diesen Stack definiert.")
+        return
+    if not problems:
+        st.success("Keine offensichtlichen Probleme bei Werkzeugen und Projekt-Grundlagen.")
+    else:
+        st.warning(f"**{len(problems)} Hinweis(e)** — bitte vor dem Schnellstart beheben.")
+
+    for r in results:
+        if r.ok:
+            st.caption(f"✅ **{r.name}:** {r.detail}")
+        else:
+            st.error(f"**{r.name}:** {r.detail}")
+            if r.fix_hint:
+                st.caption(f"→ {r.fix_hint}")
+
+    stack = {s.lower() for s in (app.get("stack") or [])}
+    if stack & {"flutter", "dart"}:
+        if st.button("Flutter Doctor ausführen (langsam)", key=f"flutter-doc-{app_id}"):
+            with st.spinner("flutter doctor -v läuft …"):
+                st.session_state[f"flutter_doctor_{app_id}"] = run_flutter_doctor_summary()
+        doc = st.session_state.get(f"flutter_doctor_{app_id}")
+        if doc:
+            if doc.ok:
+                st.success("Flutter Doctor: keine kritischen ✗ in der Ausgabe.")
+            else:
+                st.warning("Flutter Doctor: Hinweise gefunden.")
+            st.code(doc.detail, language=None)
+            if doc.fix_hint:
+                st.caption(f"→ {doc.fix_hint}")
+
+
+def render_troubleshooting(app: dict) -> None:
+    tips = troubleshooting_for_app(app)
+    if not tips:
+        return
+    with st.expander("Typische Probleme & Fehlerbehebung", expanded=False):
+        st.caption("Häufige Stolpersteine — ohne die vollen Build-Logs zu lesen.")
+        for title, fix in tips:
+            st.markdown(f"**{title}**")
+            st.write(fix)
+
+
+def render_app_memory_hub(app: dict) -> None:
+    wf = app.get("workflow") or {}
+    cat = category_for_app(app)
+
+    with st.container(border=True):
+        st.subheader("Was war das nochmal?")
+        st.markdown(wf.get("summary") or app.get("description", ""))
+        st.info(when_lost(app))
+
+        pa = primary_action_hint(app)
+        if pa:
+            st.markdown(f"**Dein Standard-Schritt:** {pa[0]} — {pa[1]}")
+
+        st.markdown("#### Ablauf in drei Schritten")
+        for label, text in route_lines(app):
+            st.markdown(f"**{label}** — {text}")
+
+        if cat:
+            st.markdown(f"**Muster:** {cat['title']}")
+            st.caption(f"Nicht nötig / falsch: {cat['never']}")
+
+        st.markdown("#### Merken")
+        for bullet in memory_bullets(app):
+            st.markdown(f"- {bullet}")
+
+        local = app.get("local_path") or ""
+        if local:
+            st.text_input("Projektordner (Pfad)", value=local, disabled=True, key=f"path-show-{app.get('id')}")
+        if app.get("repo_folder"):
+            st.caption(f"Repo-Ordnername: **{app['repo_folder']}** (Pfad kann anders heißen)")
+        if app.get("stack"):
+            st.caption("Stack: " + ", ".join(app["stack"]))
+
+        legend = command_legend_for_app(app)
+        if legend:
+            with st.expander("Was bedeuten die Befehle? (Legende)", expanded=False):
+                for key, label, when in legend:
+                    st.markdown(f"- **`{key}`** — **{label}:** {when}")
+
+        st.download_button(
+            "Diese App als Merksatz (.md)",
+            data=memory_markdown_for_app(app),
+            file_name=f"Merksatz-{app.get('id', 'app')}.md",
+            mime="text/markdown",
+            key=f"dl-memory-{app.get('id')}",
+        )
+
+    render_troubleshooting(app)
+
+
+def render_memory_page(apps: list[dict]) -> None:
+    st.markdown(
+        "Wenn du in ein paar Wochen nicht mehr weißt, **wo** du entwickelst und **wie** du live gehst: "
+        "hier alle Apps. Zum Drucken: Download oder Drucken → PDF."
+    )
+    st.download_button(
+        "Alle Merksätze.md herunterladen",
+        data=all_apps_memory_markdown(apps),
+        file_name="Merksaetze-alle-Apps.md",
+        mime="text/markdown",
+    )
+    for app in apps:
+        name = app.get("name", "?")
+        wf = app.get("workflow") or {}
+        one = (wf.get("summary") or "")[:80]
+        with st.expander(f"{name} — {one}", expanded=False):
+            st.markdown(memory_markdown_for_app(app))
+
+
+def git_for_path(local: str, *, force: bool = False) -> dict:
+    """Einzelner Pfad — z. B. auf der App-Detailseite (max. ein Repo)."""
+    if not local:
+        return empty_git_dict()
+    snap = _git_snapshot()
+    if force or local not in snap:
+        ok, _ = path_diagnosis(local)
+        if ok and path_exists(local):
+            snap[local] = git_status_to_dict(git_status(local))
+        else:
+            snap[local] = empty_git_dict("Ordner fehlt")
+    return snap[local]
+
+
+def git_from_snapshot(local: str) -> dict:
+    if not full_git_snapshot_ready():
+        return empty_git_dict("noch nicht geladen")
+    return _git_snapshot().get(local, empty_git_dict("—"))
 
 
 def git_label(data: dict) -> str:
@@ -115,7 +332,7 @@ def open_folder(path: str) -> None:
 def render_git_alerts(app: dict, local: str) -> None:
     if not local or not path_exists(local):
         return
-    g = cached_git(local)
+    g = git_for_path(local)
     if not g.get("is_repo"):
         return
     if g.get("dirty"):
@@ -129,7 +346,7 @@ def render_git_alerts(app: dict, local: str) -> None:
         st.info(f"**Git: Branch ist {g['behind']} Commit(s) hinter dem Remote.** → `git pull`")
 
 
-def render_open_issues(apps: list[dict]) -> None:
+def render_open_issues(apps: list[dict], snapshot: dict[str, dict]) -> None:
     missing = []
     dirty_names = []
     for app in apps:
@@ -138,7 +355,7 @@ def render_open_issues(apps: list[dict]) -> None:
         if not ok:
             missing.append(app.get("name", "?"))
         elif path_exists(local):
-            g = cached_git(local)
+            g = snapshot.get(local, {})
             if g.get("dirty"):
                 dirty_names.append(app.get("name", "?"))
     if not missing and not dirty_names:
@@ -154,8 +371,9 @@ def _batch_checkbox_key(app_id: str) -> str:
     return f"batch_chk_{app_id}"
 
 
-def render_batch_git(apps: list[dict]) -> None:
-    dirty = find_dirty_projects(apps)
+@st.fragment
+def render_batch_git(apps: list[dict], snapshot: dict[str, dict]) -> None:
+    dirty = find_dirty_projects(apps, snapshot)
     if not dirty:
         return
 
@@ -175,12 +393,10 @@ def render_batch_git(apps: list[dict]) -> None:
         if st.button("Alle auswählen", key="batch_git_all", use_container_width=True):
             for proj in dirty:
                 st.session_state[_batch_checkbox_key(proj.app_id)] = True
-            st.rerun()
     with btn_none:
         if st.button("Alle abwählen", key="batch_git_none", use_container_width=True):
             for proj in dirty:
                 st.session_state[_batch_checkbox_key(proj.app_id)] = False
-            st.rerun()
 
     st.markdown("**Projekte mit Änderungen**")
     selected: list = []
@@ -270,13 +486,12 @@ def render_batch_git(apps: list[dict]) -> None:
                     do_push=pending["do_push"],
                 )
                 del st.session_state["batch_git_pending"]
-                st.cache_data.clear()
+                refresh_paths(_git_snapshot(), [p.local_path for p in to_run])
+                st.session_state["git_snapshot_at"] = datetime.now().strftime("%H:%M:%S")
                 st.session_state["batch_git_results"] = results
-                st.rerun()
         with col_no:
             if st.button("Abbrechen", key="batch_git_cancel"):
                 del st.session_state["batch_git_pending"]
-                st.rerun()
 
     results = st.session_state.get("batch_git_results")
     if results:
@@ -289,7 +504,39 @@ def render_batch_git(apps: list[dict]) -> None:
                 st.caption(f"{step.action}: {mark} — {step.detail[:500]}")
         if st.button("Ergebnis schließen", key="batch_git_clear_results"):
             del st.session_state["batch_git_results"]
-            st.rerun()
+
+
+@st.fragment
+def render_overview_git_block(apps: list[dict]) -> None:
+    """Git-Scan und Batch-Aktionen — Änderungen hier blockieren nicht die ganze Seite."""
+    if not full_git_snapshot_ready():
+        if not st.session_state.get("overview_git_auto_attempted"):
+            st.session_state["overview_git_auto_attempted"] = True
+            with st.spinner("Git-Status wird beim ersten Besuch ermittelt …"):
+                load_full_git_snapshot(apps)
+        else:
+            st.info("**Git-Status** ist noch nicht geladen.")
+            if st.button(
+                "Git-Status für alle Projekte laden",
+                type="primary",
+                key="overview_load_git",
+            ):
+                with st.spinner("Git-Status wird ermittelt …"):
+                    load_full_git_snapshot(apps)
+            return
+
+    ts = st.session_state.get("git_snapshot_at", "—")
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        st.caption(f"Git-Stand: **{ts}** — nur bei Bedarf neu laden.")
+    with c2:
+        if st.button("Git aktualisieren", key="overview_refresh_git", use_container_width=True):
+            with st.spinner("Git-Status wird aktualisiert …"):
+                load_full_git_snapshot(apps)
+
+    snapshot = _git_snapshot()
+    render_open_issues(apps, snapshot)
+    render_batch_git(apps, snapshot)
 
 
 def render_docs_links(app: dict) -> None:
@@ -409,11 +656,17 @@ def render_app_card(app: dict) -> None:
     local = app.get("local_path") or ""
     ok, _ = path_diagnosis(local)
     cat = category_for_app(app)
+    wf = app.get("workflow") or {}
     st.markdown(f"**{name}**")
-    if cat:
+    if wf.get("summary"):
+        st.caption(wf["summary"][:90] + ("…" if len(wf.get("summary", "")) > 90 else ""))
+    elif cat:
         st.caption(cat["short"])
+    pa = primary_action_hint(app)
+    if pa:
+        st.caption(f"Start: {pa[0]}")
     if ok:
-        st.caption(f"✅ Ordner · Git: {git_label(cached_git(local))}")
+        st.caption(f"✅ Ordner · Git: {git_label(git_from_snapshot(local))}")
     else:
         st.caption("❌ Ordner fehlt")
 
@@ -436,23 +689,13 @@ def render_overview(apps: list[dict]) -> None:
                 render_app_card(app)
 
 
-def render_route_banner(app: dict) -> None:
-    cat = category_for_app(app)
-    if cat:
-        st.success(f"**{cat['title']}** — {cat['short']}")
-    st.markdown("#### Dein Ablauf")
-    for label, text in route_lines(app):
-        st.markdown(f"**{label}**  \n{text}")
-
-
 def render_app_detail(app: dict) -> None:
     name = app.get("name", app.get("id", "?"))
     local = app.get("local_path") or ""
     ok, path_msg = path_diagnosis(local)
 
     st.header(name)
-    st.write(app.get("description", ""))
-    render_route_banner(app)
+    render_app_memory_hub(app)
 
     if not ok and path_msg:
         st.error(path_msg)
@@ -460,7 +703,14 @@ def render_app_detail(app: dict) -> None:
     if app.get("live_url"):
         st.link_button("Live-App öffnen (Vercel)", app["live_url"])
 
+    if ok and local:
+        if st.button("Git für diese App aktualisieren", key=f"git-refresh-{app.get('id')}"):
+            git_for_path(local, force=True)
+            st.session_state["git_snapshot_at"] = datetime.now().strftime("%H:%M:%S")
+        st.caption(f"Git: {git_label(git_for_path(local))}")
+
     render_git_alerts(app, local if ok else "")
+    render_tool_diagnostics(app, path_ok=ok)
 
     st.divider()
     c1, c2, c3 = st.columns(3)
@@ -478,7 +728,7 @@ def render_app_detail(app: dict) -> None:
 
     wf = app.get("workflow")
     if wf and wf.get("steps"):
-        with st.expander("Schritt für Schritt (Details)", expanded=False):
+        with st.expander("Schritt für Schritt (aus apps.yaml)", expanded=True):
             for i, step in enumerate(wf["steps"], start=1):
                 if isinstance(step, str):
                     st.markdown(f"{i}. {step}")
@@ -520,7 +770,11 @@ def render_app_detail(app: dict) -> None:
     render_docs_links(app)
 
     if app.get("prerequisites"):
-        with st.expander("Voraussetzungen"):
+        with st.expander("Voraussetzungen (manuell / Doku)"):
+            st.caption(
+                "Statische Liste aus apps.yaml — ersetzt keine Live-Prüfung oben. "
+                "Typische Fehler (PATH, fehlendes npm install) zeigt **Umgebung & Werkzeuge**."
+            )
             for line in app["prerequisites"]:
                 st.write(f"- {line}")
     if app.get("notes"):
@@ -587,7 +841,8 @@ def main() -> None:
     apps = sort_apps(data.get("apps", []))
 
     if st.sidebar.button("Status neu laden"):
-        st.cache_data.clear()
+        clear_git_snapshot()
+        clear_tool_check_cache()
         st.rerun()
 
     all_tags = sorted({t for a in apps for t in a.get("tags", [])})
@@ -612,14 +867,16 @@ def main() -> None:
     if page_id == "__guide__":
         st.title("Wegweiser")
         render_guide_page(display_apps if display_apps else apps)
+    elif page_id == "__memory__":
+        st.title("Merksätze")
+        render_memory_page(display_apps if display_apps else apps)
     elif page_id == "__quickref__":
         st.title("Schnellreferenz")
         render_quickref_page(display_apps if display_apps else apps)
     elif page_id == "__overview__":
         st.title("Übersicht")
         overview_apps = display_apps if display_apps else apps
-        render_open_issues(overview_apps)
-        render_batch_git(overview_apps)
+        render_overview_git_block(overview_apps)
         st.divider()
         render_overview(overview_apps)
         with st.expander("Playbook.md"):
@@ -630,7 +887,7 @@ def main() -> None:
         render_app_detail(app)
 
     st.sidebar.divider()
-    st.sidebar.caption("Start: Wegweiser · Druck: Schnellreferenz")
+    st.sidebar.caption("Vergessen? → Merksätze · Drucken: Schnellreferenz oder Merksätze.md")
 
 
 if __name__ == "__main__":
