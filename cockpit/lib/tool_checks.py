@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -44,7 +45,7 @@ FIX_HINTS: dict[str, str] = {
         "Im Projektordner oft: npm install"
     ),
     "npx": "Wird mit npm mitgeliefert — Node.js neu installieren falls npx fehlt.",
-    "expo": "Im Projektordner: npm install, dann: npx expo --version",
+    "expo": "Im Projektordner (Cello): npm install, dann npm start. Kein globales expo-CLI nötig.",
     "python": (
         "Python 64-bit installieren (python.org). "
         "Für dieses Cockpit: tools\\run-cockpit.ps1 oder die EXE."
@@ -116,16 +117,7 @@ def system_checks_for_stack(stack: list[str]) -> list[ToolCheckResult]:
         add("node", "Node.js", "node")
         add("npm", "npm", "npm")
 
-    if tags & {"expo", "react-native"}:
-        ok, detail = _run_version("npx", ["expo", "--version"])
-        out.append(
-            ToolCheckResult(
-                name="Expo CLI",
-                ok=ok,
-                detail=detail,
-                fix_hint=None if ok else FIX_HINTS["expo"],
-            )
-        )
+    # Expo: kein „npx expo --version“ — kann Minuten hängen (npm-Download). Siehe project_checks.
 
     if tags & {"rust", "tauri"}:
         add("rustc", "Rust (rustc)", "rustc")
@@ -158,6 +150,45 @@ def system_checks_for_stack(stack: list[str]) -> list[ToolCheckResult]:
     return out
 
 
+def _read_json_file(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+
+
+def expo_project_check(root: Path) -> ToolCheckResult:
+    """Expo über node_modules prüfen — schnell, ohne npx."""
+    expo_pkg = root / "node_modules" / "expo" / "package.json"
+    if expo_pkg.is_file():
+        ver = _read_json_file(expo_pkg).get("version", "?")
+        return ToolCheckResult(
+            name="Expo (Projekt)",
+            ok=True,
+            detail=f"expo {ver} in node_modules",
+            fix_hint="Am PC: npm start · iOS am Mac: npm run ios",
+        )
+
+    pkg_path = root / "package.json"
+    pkg = _read_json_file(pkg_path) if pkg_path.is_file() else {}
+    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    expo_dep = deps.get("expo")
+    if expo_dep:
+        return ToolCheckResult(
+            name="Expo (Projekt)",
+            ok=False,
+            detail=f"expo in package.json ({expo_dep}), fehlt in node_modules",
+            fix_hint="Im Projektordner: npm install",
+        )
+
+    return ToolCheckResult(
+        name="Expo (Projekt)",
+        ok=False,
+        detail="Kein expo in package.json",
+        fix_hint=FIX_HINTS["expo"],
+    )
+
+
 def project_checks(local: str, stack: list[str]) -> list[ToolCheckResult]:
     root = Path(local).expanduser()
     if not root.is_dir():
@@ -165,6 +196,9 @@ def project_checks(local: str, stack: list[str]) -> list[ToolCheckResult]:
 
     tags = {s.lower() for s in stack}
     out: list[ToolCheckResult] = []
+
+    if tags & {"expo", "react-native"}:
+        out.append(expo_project_check(root))
 
     if tags & NODE_STACK:
         pkg = root / "package.json"
