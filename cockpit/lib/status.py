@@ -14,6 +14,7 @@ class GitStatus:
     dirty: bool | None = None
     ahead: int | None = None
     behind: int | None = None
+    head: str | None = None
     message: str | None = None
 
 
@@ -58,12 +59,16 @@ def git_status(path_str: str | None) -> GitStatus:
             if len(parts) == 2:
                 behind, ahead = int(parts[0]), int(parts[1])
 
+    head_proc = _run_git(root, "rev-parse", "--short", "HEAD")
+    head = head_proc.stdout.strip() if head_proc.returncode == 0 else None
+
     return GitStatus(
         is_repo=True,
         branch=branch.stdout.strip() or "(detached?)",
         dirty=dirty,
         ahead=ahead,
         behind=behind,
+        head=head,
         message=None,
     )
 

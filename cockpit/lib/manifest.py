@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -107,6 +108,31 @@ def load_manifest_safe() -> tuple[dict | None, str | None]:
     if "apps" not in data:
         return None, "apps.yaml: Schlüssel 'apps:' fehlt."
     return data, None
+
+
+def manifest_file_mtime() -> float | None:
+    try:
+        return MANIFEST.stat().st_mtime
+    except OSError:
+        return None
+
+
+def manifest_mtime_label() -> str:
+    mtime = manifest_file_mtime()
+    if mtime is None:
+        return "—"
+    return datetime.fromtimestamp(mtime).strftime("%d.%m.%Y %H:%M")
+
+
+def manifest_changed_since(session: dict) -> bool:
+    """True wenn apps.yaml seit dem letzten Lauf geändert wurde (Datei-Zeitstempel)."""
+    mtime = manifest_file_mtime()
+    key = "manifest_mtime_seen"
+    prev = session.get(key)
+    session[key] = mtime
+    if prev is None or mtime is None:
+        return False
+    return mtime != prev
 
 
 def filter_apps(

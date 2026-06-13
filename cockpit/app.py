@@ -23,12 +23,14 @@ if str(bundle_root()) not in sys.path:
     sys.path.insert(0, str(bundle_root()))
 
 from cockpit.lib.checklist import items_for_app, session_key
-from cockpit.lib.commands import get_command_blocks
+from cockpit.lib.commands import get_command_blocks, get_launch_command
 from cockpit.lib.manifest import (
     MANIFEST,
     PLAYGROUND_HINT,
     filter_apps,
     load_manifest_safe,
+    manifest_changed_since,
+    manifest_mtime_label,
     nav_label,
     path_diagnosis,
     playbook_markdown,
@@ -59,7 +61,19 @@ from cockpit.lib.app_memory import (
     troubleshooting_for_app,
     when_lost,
 )
+from cockpit.lib.playground_scan import (
+    append_app_to_manifest,
+    app_dict_to_yaml_block,
+    build_app_dict_from_discovery,
+    find_unregistered_projects,
+)
 from cockpit.lib.tool_checks import ToolCheckResult, run_checks_for_app, run_flutter_doctor_summary
+from cockpit.lib.updates import (
+    collect_cockpit_updates,
+    ensure_git_baseline,
+    mark_all_projects_seen,
+    mark_project_seen,
+)
 from cockpit.lib.workflow_guide import CATEGORIES, apps_in_category, category_for_app, route_lines
 
 RELEASE_LABELS = {
@@ -102,6 +116,8 @@ def clear_git_snapshot() -> None:
         "git_snapshot_ver",
         "git_snapshot_at",
         "overview_git_auto_attempted",
+        "git_heads_baseline",
+        "updates_dismissed_behind",
     ):
         st.session_state.pop(key, None)
 
@@ -306,7 +322,7 @@ def git_label(data: dict) -> str:
     return " · ".join(parts)
 
 
-def open_in_powershell(script: str) -> None:
+def open_in_powershell(script: str, *, cwd: str | None = None) -> None:
     subprocess.Popen(
         [
             "powershell.exe",
@@ -317,9 +333,54 @@ def open_in_powershell(script: str) -> None:
             "-Command",
             script,
         ],
-        cwd=None,
+        cwd=cwd,
         creationflags=subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0,
     )
+
+
+def navigate_to_app(app: dict) -> None:
+    st.session_state.cockpit_nav = nav_label(app)
+    st.rerun()
+
+
+def clear_tool_checks_for_app(app_id: str) -> None:
+    for prefix in (f"tool_checks_{app_id}", f"tool_auto_{app_id}", f"flutter_doctor_{app_id}"):
+        st.session_state.pop(prefix, None)
+
+
+def render_app_start_button(
+    app: dict,
+    local: str,
+    *,
+    path_ok: bool,
+    key_suffix: str = "detail",
+) -> None:
+    """Direktstart: primärer dev-Befehl in neuem PowerShell-Fenster."""
+    app_id = app.get("id", "app")
+    if app_id == "app-cockpit":
+        if key_suffix == "detail":
+            st.caption("Cockpit läuft bereits.")
+        return
+    if not path_ok or not local:
+        return
+    launch = get_launch_command(app)
+    if not launch:
+        if key_suffix == "detail":
+            st.caption("Kein Start-Befehl (nur Kommentare oder Android Studio).")
+        return
+    cmd_key, script = launch
+    full = script_for_powershell(local, script)
+    pa = primary_action_hint(app)
+    label = pa[0] if pa else cmd_key
+    if st.button(
+        "START",
+        key=f"start-{app_id}-{key_suffix}",
+        type="primary",
+        use_container_width=True,
+        help=f"Startet „{cmd_key}“ in neuem PowerShell-Fenster",
+    ):
+        open_in_powershell(full, cwd=local)
+        st.success(f"**{app.get('name', app_id)}** — PowerShell geöffnet (`{cmd_key}`)")
 
 
 def open_folder(path: str) -> None:
@@ -669,6 +730,129 @@ def render_app_card(app: dict) -> None:
         st.caption(f"✅ Ordner · Git: {git_label(git_from_snapshot(local))}")
     else:
         st.caption("❌ Ordner fehlt")
+    render_app_start_button(app, local, path_ok=ok, key_suffix=f"card-{app.get('id', 'x')}")
+
+
+def _app_by_id(apps: list[dict], app_id: str) -> dict | None:
+    return next((a for a in apps if a.get("id") == app_id), None)
+
+
+def render_cockpit_updates_panel(
+    apps: list[dict],
+    *,
+    manifest_changed: bool,
+) -> None:
+    """Klare Update-Hinweise (Git, apps.yaml, neue Ordner) mit Anpassungs-Aktionen."""
+    discovered = find_unregistered_projects(apps)
+    snapshot = _git_snapshot() if full_git_snapshot_ready() else {}
+
+    if full_git_snapshot_ready():
+        ensure_git_baseline(apps, snapshot, st.session_state)
+    else:
+        st.info(
+            "**Update-Erkennung (Git):** Git-Status unten laden — "
+            "dann werden neue Commits auf GitHub und geänderte Projekt-Stände angezeigt."
+        )
+
+    updates = collect_cockpit_updates(
+        apps,
+        snapshot,
+        st.session_state,
+        manifest_changed=manifest_changed,
+        discovered=discovered,
+    )
+
+    if not updates:
+        if full_git_snapshot_ready():
+            st.success("**Keine offenen Updates** — Register und Git-Stand passen zum letzten Merker.")
+        return
+
+    st.subheader("Updates — Cockpit anpassen")
+    st.error(f"**{len(updates)} Hinweis(e)** — bitte prüfen und im Cockpit nachziehen.")
+
+    if len(updates) > 1:
+        if st.button("Alle als erledigt markieren", key="updates_mark_all"):
+            if full_git_snapshot_ready():
+                mark_all_projects_seen(apps, snapshot, st.session_state)
+            st.rerun()
+
+    for idx, upd in enumerate(updates):
+        with st.container(border=True):
+            st.markdown(f"**{upd.title}**")
+            st.markdown(upd.detail)
+            st.caption(f"→ {upd.hint}")
+
+            c1, c2, c3, c4 = st.columns(4)
+
+            if upd.kind == "yaml_changed":
+                with c1:
+                    if st.button("apps.yaml-Ordner öffnen", key=f"upd-yaml-{idx}"):
+                        open_folder(str(MANIFEST.parent))
+                with c2:
+                    st.caption(f"`{MANIFEST.name}` bearbeiten, speichern — Cockpit lädt neu.")
+
+            elif upd.kind == "new_folder":
+                disc = next((d for d in discovered if d.suggested_id == upd.app_id), None)
+                with c1:
+                    if disc and st.button(
+                        "In apps.yaml übernehmen",
+                        key=f"upd-add-{upd.app_id}",
+                        type="primary",
+                    ):
+                        ok, msg = append_app_to_manifest(build_app_dict_from_discovery(disc))
+                        if ok:
+                            st.session_state["manifest_reload_hint"] = msg
+                            st.rerun()
+                        else:
+                            st.error(msg)
+                with c2:
+                    if upd.local_path and st.button("Ordner öffnen", key=f"upd-folder-{idx}"):
+                        open_folder(upd.local_path)
+
+            else:
+                app = _app_by_id(apps, upd.app_id)
+                with c1:
+                    if app and st.button("App im Cockpit öffnen", key=f"upd-open-{upd.app_id}"):
+                        navigate_to_app(app)
+                with c2:
+                    if upd.local_path and st.button("Projektordner", key=f"upd-proj-{upd.app_id}"):
+                        open_folder(upd.local_path)
+                with c3:
+                    if app and st.button("Werkzeuge neu prüfen", key=f"upd-tools-{upd.app_id}"):
+                        clear_tool_checks_for_app(upd.app_id)
+                        st.session_state["cockpit_nav"] = nav_label(app)
+                        st.rerun()
+                with c4:
+                    if full_git_snapshot_ready() and app and st.button(
+                        "Erledigt",
+                        key=f"upd-done-{upd.app_id}",
+                    ):
+                        mark_project_seen(app, snapshot, st.session_state)
+                        st.rerun()
+
+                if app and upd.kind == "remote_behind":
+                    _setup, windows, _mac = get_command_blocks(app)
+                    pull = windows.get("update") or (app.get("commands") or {}).get("update")
+                    if pull:
+                        st.code(
+                            script_for_powershell(upd.local_path, pull),
+                            language="powershell",
+                        )
+
+
+@st.fragment
+def render_playground_discoveries(apps: list[dict]) -> None:
+    """YAML-Vorschau für neue Playground-Ordner (Aktionen oben im Update-Panel)."""
+    discovered = find_unregistered_projects(apps)
+    if not discovered:
+        return
+
+    st.markdown("##### YAML-Vorschau (neue Ordner)")
+    for d in discovered:
+        app_dict = build_app_dict_from_discovery(d)
+        with st.expander(f"{d.suggested_name} — Entwurf für apps.yaml"):
+            st.code(app_dict_to_yaml_block(app_dict), language="yaml")
+            st.caption("Status **draft** — nach Übernehmen Befehle und Merksätze prüfen.")
 
 
 def render_overview(apps: list[dict]) -> None:
@@ -694,7 +878,11 @@ def render_app_detail(app: dict) -> None:
     local = app.get("local_path") or ""
     ok, path_msg = path_diagnosis(local)
 
-    st.header(name)
+    h1, h2 = st.columns([4, 1])
+    with h1:
+        st.header(name)
+    with h2:
+        render_app_start_button(app, local, path_ok=ok, key_suffix="detail")
     render_app_memory_hub(app)
 
     if not ok and path_msg:
@@ -833,6 +1021,13 @@ def main() -> None:
     data, yaml_err = load_manifest_safe()
     st.sidebar.title("App-Cockpit")
     st.sidebar.caption(f"`{MANIFEST}`")
+    st.sidebar.caption(f"Register-Stand: {manifest_mtime_label()}")
+
+    if manifest_changed_since(st.session_state):
+        clear_git_snapshot()
+        clear_tool_check_cache()
+        st.sidebar.success("apps.yaml geändert — Register neu geladen.")
+        st.session_state["pending_yaml_changed_notice"] = True
 
     if yaml_err:
         st.error(yaml_err)
@@ -876,7 +1071,14 @@ def main() -> None:
     elif page_id == "__overview__":
         st.title("Übersicht")
         overview_apps = display_apps if display_apps else apps
+        hint = st.session_state.pop("manifest_reload_hint", None)
+        if hint:
+            st.success(hint)
+        yaml_changed = st.session_state.pop("pending_yaml_changed_notice", False)
         render_overview_git_block(overview_apps)
+        st.divider()
+        render_cockpit_updates_panel(apps, manifest_changed=yaml_changed)
+        render_playground_discoveries(apps)
         st.divider()
         render_overview(overview_apps)
         with st.expander("Playbook.md"):

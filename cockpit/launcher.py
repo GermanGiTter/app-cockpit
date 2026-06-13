@@ -24,6 +24,8 @@ def _import_cockpit_libs() -> None:
     import cockpit.lib.git_snapshot  # noqa: F401
     import cockpit.lib.tool_checks  # noqa: F401
     import cockpit.lib.app_memory  # noqa: F401
+    import cockpit.lib.playground_scan  # noqa: F401
+    import cockpit.lib.updates  # noqa: F401
     import cockpit.lib.checklist  # noqa: F401
     import cockpit.lib.commands  # noqa: F401
     import cockpit.lib.manifest  # noqa: F401

@@ -21,6 +21,8 @@ cockpit_hidden = [
     "cockpit.lib.git_snapshot",
     "cockpit.lib.tool_checks",
     "cockpit.lib.app_memory",
+    "cockpit.lib.playground_scan",
+    "cockpit.lib.updates",
     "cockpit.lib.checklist",
     "cockpit.lib.commands",
     "cockpit.lib.manifest",

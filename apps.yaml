@@ -305,7 +305,7 @@ apps:
         cd app-cockpit
         .\build\build-exe.ps1
     notes:
-      - Listet sich selbst mit — 8 Apps im Register.
+      - Listet sich selbst mit — Register in apps.yaml pflegen.
 
   - id: alles-zu
     name: Alles Zu (Launcher „Alles schließen“)
@@ -409,3 +409,66 @@ apps:
     notes:
       - App-Name in der UI „Einkaufsliste“; Projektordner retrograde-filament.
       - Kein iPhone-Transfer — Nutzung im Browser (PWA), Hosting nur Vercel.
+
+  - id: homenet-doctor
+    name: HomeNet Doctor
+    status: active
+    description: Defensives On-Demand-Diagnose-Tool für Heimnetzwerke und Home-Assistant-Setups (CLI + GUI).
+    stack: [python, customtkinter]
+    tags: [tooling, desktop]
+    github: https://github.com/GermanGiTter/homenet-doctor.git
+    local_path: C:\Users\rare\.gemini\antigravity\playground\homenet-doctor
+    targets: [windows]
+    workflow:
+      dev_on: windows
+      release_on: windows
+      summary: "Nur Windows-PC — venv, config.yaml, dann GUI oder CLI-Diagnose. Kein Deploy, kein Mac."
+      steps:
+        - title: Einmal einrichten
+          detail: venv, pip install, config.yaml aus config.example.yaml kopieren (Befehl install).
+        - title: Konfiguration prüfen
+          detail: python main.py init (optional), python main.py validate-config — Ziele in config.yaml anpassen.
+        - title: Täglich nutzen
+          detail: GUI mit python main.py gui — oder CLI z. B. check, ha-incident, full. Immer zuerst .venv aktivieren.
+        - title: Was du nicht brauchst
+          detail: Kein Vercel, kein Mac, kein Handy-Release. Reports landen lokal in ./reports.
+    prerequisites:
+      - Python 3.10+ (64-bit), venv aktivieren vor jedem Befehl
+      - config.yaml (aus config.example.yaml)
+      - Optional Home Assistant / cloudflared-Pfade in config.yaml
+    commands:
+      install: |
+        cd homenet-doctor
+        py -3 -m venv .venv
+        .\.venv\Scripts\Activate.ps1
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        copy config.example.yaml config.yaml
+      update: |
+        cd homenet-doctor
+        git pull
+        .\.venv\Scripts\Activate.ps1
+        pip install -r requirements.txt
+      dev: |
+        cd homenet-doctor
+        .\.venv\Scripts\Activate.ps1
+        python main.py gui
+      check: |
+        cd homenet-doctor
+        .\.venv\Scripts\Activate.ps1
+        python main.py check
+      full_report: |
+        cd homenet-doctor
+        .\.venv\Scripts\Activate.ps1
+        python main.py full --json --markdown --html
+      test: |
+        cd homenet-doctor
+        .\.venv\Scripts\Activate.ps1
+        python -m unittest discover -s tests -v
+    docs:
+      - label: README
+        file: README.md
+    notes:
+      - CLI und GUI — Fixes nur nach explizitem APPLY <FIX_ID>.
+      - Ohne aktive venv fehlen Pakete; where python zur Kontrolle.
+      - Ausführliche Befehle und Optionen im Projekt-README.

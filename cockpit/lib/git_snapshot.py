@@ -15,6 +15,7 @@ def git_status_to_dict(gs: GitStatus) -> dict:
         "dirty": gs.dirty,
         "ahead": gs.ahead,
         "behind": gs.behind,
+        "head": gs.head,
         "message": gs.message,
     }
 
@@ -26,6 +27,7 @@ def empty_git_dict(message: str = "—") -> dict:
         "dirty": None,
         "ahead": None,
         "behind": None,
+        "head": None,
         "message": message,
     }
 
