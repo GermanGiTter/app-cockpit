@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -320,7 +319,13 @@ def build_app_dict_from_discovery(d: DiscoveredProject) -> dict:
 
 
 def app_dict_to_yaml_block(app: dict) -> str:
-    """Einzelnen App-Block als YAML-Text (zum Anhängen)."""
+    """Einzelnen App-Block als YAML-Text (zum Anhängen).
+
+    Korrektes Listen-Mapping:
+      - id: foo
+        name: bar
+    (nicht name auf derselben Ebene wie „- id“)
+    """
     block = yaml.dump(
         app,
         allow_unicode=True,
@@ -328,8 +333,13 @@ def app_dict_to_yaml_block(app: dict) -> str:
         sort_keys=False,
         width=1000,
     )
-    indented = textwrap.indent(block.rstrip(), "  ")
-    return f"  - {indented[2:]}"
+    lines = [ln for ln in block.rstrip().splitlines() if ln.strip()]
+    if not lines:
+        return ""
+    first, *rest = lines
+    out = [f"  - {first}"]
+    out.extend(f"    {line}" for line in rest)
+    return "\n".join(out)
 
 
 def append_app_to_manifest(app: dict) -> tuple[bool, str]:

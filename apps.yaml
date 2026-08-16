@@ -472,3 +472,49 @@ apps:
       - CLI und GUI — Fixes nur nach explizitem APPLY <FIX_ID>.
       - Ohne aktive venv fehlen Pakete; where python zur Kontrolle.
       - Ausführliche Befehle und Optionen im Projekt-README.
+
+  - id: wealth-management
+    name: Aurelius (Wealth Management)
+    status: active
+    description: Private Wealth Intelligence Platform — lokal (Next.js + FastAPI). Keine Broker-Orders.
+    stack: [python, node, next]
+    tags: [tooling, desktop, web]
+    github: https://github.com/GermanGiTter/aurelius
+    local_path: C:\Users\rare\.gemini\antigravity\playground\wealth-management
+    repo_folder: wealth-management
+    nav_short: nur Windows
+    targets: [windows, browser]
+    workflow:
+      dev_on: windows
+      release_on: windows
+      summary: "Nur Windows-PC — Setup einmal, dann start-dev.bat (Backend + Frontend unter localhost:3000)."
+      steps:
+        - title: Einmal einrichten
+          detail: Im Ordner wealth-management scripts\setup.ps1 — Python-venv, Node-Deps, ggf. .env.
+        - title: Starten
+          detail: scripts\start-dev.bat (oder START im Cockpit) — Browser http://localhost:3000.
+        - title: Was du nicht brauchst
+          detail: Kein Mac, kein Vercel-Pflicht für den lokalen Betrieb. Nur private Nutzung.
+    prerequisites:
+      - Python 3.11+
+      - Node.js 18+ (npm)
+    commands:
+      install: |
+        cd wealth-management
+        powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+      update: |
+        cd wealth-management
+        git pull
+        powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+      dev: |
+        cd wealth-management
+        powershell -ExecutionPolicy Bypass -File .\scripts\start-dev.ps1
+    docs:
+      - label: README
+        file: README.md
+      - label: USER_GUIDE
+        file: docs/USER_GUIDE.md
+    notes:
+      - Anzeigename Aurelius; Ordner wealth-management; GitHub-Repo aurelius.
+      - START öffnet start-dev.ps1 (zwei Fenster Backend/Frontend).
+      - Details in docs/RELEASE.md und docs/WINDOWS_LAUNCHER_GUIDE.md.
